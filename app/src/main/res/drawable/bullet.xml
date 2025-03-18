@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="20dp"
+    android:height="20dp"
+    android:viewportWidth="20"
+    android:viewportHeight="20">
+    
+    <!-- Пуля -->
+    <path
+        android:fillColor="#FFFF00"
+        android:pathData="M10,2 L12,8 L12,18 L8,18 L8,8 Z" />
+    
+    <!-- Огонь -->
+    <path
+        android:fillColor="#FF5722"
+        android:pathData="M8,8 L12,8 L10,2 Z" />
+</vector> 

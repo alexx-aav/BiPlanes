@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="60dp"
+    android:height="60dp"
+    android:viewportWidth="60"
+    android:viewportHeight="60">
+    
+    <!-- Корпус самолета -->
+    <path
+        android:fillColor="#0000FF"
+        android:pathData="M30,10 L40,30 L30,50 L20,30 Z" />
+    
+    <!-- Крылья -->
+    <path
+        android:fillColor="#0000FF"
+        android:pathData="M10,30 L50,30 L45,35 L15,35 Z" />
+    
+    <!-- Хвост -->
+    <path
+        android:fillColor="#0000FF"
+        android:pathData="M25,45 L35,45 L30,55 Z" />
+    
+    <!-- Кабина -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M28,25 L32,25 L32,30 L28,30 Z" />
+</vector> 

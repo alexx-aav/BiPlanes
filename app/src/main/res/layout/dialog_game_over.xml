@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    style="@style/DialogContainer">
+
+    <TextView
+        android:id="@+id/titleText"
+        style="@style/DialogTitle"
+        android:text="Игра окончена"
+        android:alpha="0"
+        android:translationY="20dp" />
+
+    <TextView
+        android:id="@+id/winnerText"
+        style="@style/DialogText"
+        android:text="Победитель: "
+        android:alpha="0"
+        android:translationY="20dp" />
+
+    <TextView
+        android:id="@+id/scoreText"
+        style="@style/DialogText"
+        android:text="Счет: "
+        android:alpha="0"
+        android:translationY="20dp" />
+
+    <LinearLayout
+        android:id="@+id/buttonsContainer"
+        style="@style/DialogButtonsContainer"
+        android:alpha="0"
+        android:translationY="20dp">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/rematchButton"
+            style="@style/DialogButton"
+            android:text="Реванш" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/mainMenuButton"
+            style="@style/DialogButton"
+            android:text="Главное меню" />
+
+    </LinearLayout>
+
+</LinearLayout> 

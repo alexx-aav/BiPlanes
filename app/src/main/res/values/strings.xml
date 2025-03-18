@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">BiPlanes</string>
+    <string name="select_device">Выбор устройства</string>
+</resources> 

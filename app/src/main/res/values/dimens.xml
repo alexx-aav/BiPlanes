@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Размеры для элементов управления в игре -->
+    <dimen name="joystick_radius">80dp</dimen>
+    <dimen name="fire_button_radius">60dp</dimen>
+    <dimen name="eject_button_radius">50dp</dimen>
+    
+    <!-- Размеры для элементов выбора цвета в лобби -->
+    <dimen name="color_picker_size">40dp</dimen>
+    <dimen name="color_picker_margin">8dp</dimen>
+    <dimen name="color_picker_selected_stroke_width">3dp</dimen>
+
+    <!-- Размеры для игровых объектов -->
+    <dimen name="plane_size">60dp</dimen>
+    <dimen name="bullet_size">20dp</dimen>
+    <dimen name="explosion_size">100dp</dimen>
+    
+    <!-- Размеры для кнопок управления -->
+    <dimen name="control_button_size">60dp</dimen>
+    <dimen name="action_button_width">100dp</dimen>
+    <dimen name="action_button_height">60dp</dimen>
+</resources> 

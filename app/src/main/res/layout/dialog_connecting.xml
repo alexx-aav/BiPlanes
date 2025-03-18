@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    style="@style/DialogContainer">
+
+    <TextView
+        android:id="@+id/titleText"
+        style="@style/DialogTitle"
+        android:text="Подключение"
+        android:alpha="0"
+        android:translationY="20dp" />
+
+    <TextView
+        android:id="@+id/statusText"
+        style="@style/DialogText"
+        android:text="Поиск противника..."
+        android:alpha="0"
+        android:translationY="20dp" />
+
+    <ProgressBar
+        android:id="@+id/progressBar"
+        style="@style/DialogProgressBar"
+        android:alpha="0"
+        android:translationY="20dp" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/cancelButton"
+        style="@style/DialogButton"
+        android:text="Отмена"
+        android:alpha="0"
+        android:translationY="20dp" />
+
+</LinearLayout> 

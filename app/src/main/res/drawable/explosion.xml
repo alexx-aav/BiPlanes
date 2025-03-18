@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="100dp"
+    android:height="100dp"
+    android:viewportWidth="100"
+    android:viewportHeight="100">
+    
+    <!-- Внешний круг взрыва -->
+    <path
+        android:fillColor="#FF5722"
+        android:pathData="M50,50 m-45,0 a45,45 0 1,0 90,0 a45,45 0 1,0 -90,0" />
+    
+    <!-- Средний круг взрыва -->
+    <path
+        android:fillColor="#FF9800"
+        android:pathData="M50,50 m-30,0 a30,30 0 1,0 60,0 a30,30 0 1,0 -60,0" />
+    
+    <!-- Внутренний круг взрыва -->
+    <path
+        android:fillColor="#FFEB3B"
+        android:pathData="M50,50 m-15,0 a15,15 0 1,0 30,0 a15,15 0 1,0 -30,0" />
+    
+    <!-- Лучи взрыва -->
+    <path
+        android:fillColor="#FF5722"
+        android:pathData="M50,5 L55,20 L45,20 Z" />
+    <path
+        android:fillColor="#FF5722"
+        android:pathData="M50,95 L55,80 L45,80 Z" />
+    <path
+        android:fillColor="#FF5722"
+        android:pathData="M5,50 L20,55 L20,45 Z" />
+    <path
+        android:fillColor="#FF5722"
+        android:pathData="M95,50 L80,55 L80,45 Z" />
+    <path
+        android:fillColor="#FF5722"
+        android:pathData="M20,20 L30,30 L25,35 L15,25 Z" />
+    <path
+        android:fillColor="#FF5722"
+        android:pathData="M80,20 L70,30 L75,35 L85,25 Z" />
+    <path
+        android:fillColor="#FF5722"
+        android:pathData="M20,80 L30,70 L25,65 L15,75 Z" />
+    <path
+        android:fillColor="#FF5722"
+        android:pathData="M80,80 L70,70 L75,65 L85,75 Z" />
+</vector> 
