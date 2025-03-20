@@ -24,6 +24,7 @@ class Plane(
     var velocity: Vector2D = Vector2D(0f, 0f)
     var acceleration: Vector2D = Vector2D(0f, 0f)
     var rotation: Float = 0f
+    var rotationVelocity: Float = 0f
     var isDestroyed: Boolean = false
     var hasPilot: Boolean = true
     var health = 100
@@ -42,6 +43,14 @@ class Plane(
     private val minSpeed = 5.0f                     // Минимальная скорость для полета
     private val turnFactor = 0.12f                  // Уменьшенный коэффициент поворота (было 0.15f)
     
+    // Добавляем новые константы для физики падения
+    private val fallGravity = Vector2D(0f, 0.015f)  // Увеличенная гравитация для падения
+    private val fallDragCoefficient = 0.003f        // Увеличенное сопротивление воздуха при падении
+    private val maxFallSpeed = 15.0f                // Максимальная скорость падения
+    private val rotationDamping = 0.98f             // Затухание вращения
+    private val targetFallAngle = 45f               // Целевой угол падения
+    private val angleChangeSpeed = 0.5f             // Скорость изменения угла к целевому
+    
     private val TAG = "Plane"
     private val planePath = Path()
     private val wingPath = Path()
@@ -56,6 +65,10 @@ class Plane(
     var outOfScreenTime = 0f
     val maxOutOfScreenTime = 3.0f  // Максимальное время вне экрана в секундах
 
+    // Добавляем переменные для управления физикой полета
+    private var ignoreLift = false
+    private var autopilotEnabled = true
+    
     init {
         Log.d(TAG, "Plane created at position (${position.x}, ${position.y}), width: $width, height: $height, color: $color")
         
@@ -95,12 +108,12 @@ class Plane(
     fun ejectPilot() {
         pilot = null
         hasPilot = false
-        // После катапультирования самолет начинает снижаться с некоторым хаотичным вращением
-        // Добавляем небольшой случайный момент вращения
-        rotation += Random.nextFloat() * 20f - 10f
-        // Снижаем тягу двигателя
-        engineThrottle = 0.1f
-        Log.d(TAG, "Пилот катапультировался, самолет начинает падать")
+        // После катапультирования самолет продолжает движение по инерции
+        // Добавляем небольшое случайное вращение для реализма
+        rotationVelocity = (Random.nextFloat() - 0.5f) * 0.5f
+        // Снижаем тягу двигателя постепенно
+        engineThrottle = 0.3f
+        Log.d(TAG, "Пилот катапультировался, самолет продолжает движение по инерции")
     }
 
     /**
@@ -125,14 +138,31 @@ class Plane(
             
             // Если в самолете нет пилота, он должен падать
             if (!hasPilot) {
-                // Увеличенная гравитация для падения
-                velocity.add(Vector2D(0f, gravity.y * 1.5f))
+                // Сохраняем текущую горизонтальную скорость
+                val currentHorizontalSpeed = velocity.x
                 
-                // Постепенно замедляем горизонтальную скорость
-                velocity.x *= 0.99f
+                // Применяем увеличенную гравитацию для падения
+                velocity.add(Vector2D(0f, fallGravity.y))
                 
-                // Добавляем небольшое случайное вращение для реалистичности
-                rotation += (Random.nextFloat() * 2f - 1f) * deltaTime * 60f
+                // Вычисляем текущую скорость
+                val currentSpeed = Math.sqrt((velocity.x * velocity.x + velocity.y * velocity.y).toDouble()).toFloat()
+                
+                // Ограничиваем максимальную скорость падения
+                if (currentSpeed > maxFallSpeed) {
+                    velocity.multiply(maxFallSpeed / currentSpeed)
+                }
+                
+                // Постепенно замедляем горизонтальную скорость с учетом сопротивления воздуха
+                velocity.x *= (1f - fallDragCoefficient * deltaTime * 60f)
+                
+                // Плавно меняем угол самолета к целевому углу падения
+                val targetAngle = if (velocity.x > 0) targetFallAngle else -targetFallAngle
+                val angleDiff = targetAngle - rotation
+                rotation += angleDiff * angleChangeSpeed * deltaTime * 60f
+                
+                // Добавляем вращение с затуханием
+                rotation += rotationVelocity * deltaTime * 60f
+                rotationVelocity *= rotationDamping
                 
                 // Обновляем позицию
                 position = position.add(Vector2D(velocity.x * deltaTime * 60f, velocity.y * deltaTime * 60f))
@@ -686,5 +716,37 @@ class Plane(
     
     fun destroy() {
         isDestroyed = true
+    }
+
+    /**
+     * Устанавливает, нужно ли игнорировать подъемную силу для самолета
+     * @param ignore true, если нужно игнорировать подъемную силу
+     */
+    fun setIgnoreLift(ignore: Boolean) {
+        this.ignoreLift = ignore
+    }
+    
+    /**
+     * Проверяет, игнорируется ли подъемная сила для самолета
+     * @return true, если подъемная сила игнорируется
+     */
+    fun isLiftIgnored(): Boolean {
+        return ignoreLift
+    }
+    
+    /**
+     * Включает или выключает автопилот для самолета
+     * @param enabled true, если автопилот включен
+     */
+    fun setAutopilotEnabled(enabled: Boolean) {
+        this.autopilotEnabled = enabled
+    }
+    
+    /**
+     * Проверяет, включен ли автопилот для самолета
+     * @return true, если автопилот включен
+     */
+    fun isAutopilotEnabled(): Boolean {
+        return autopilotEnabled
     }
 }

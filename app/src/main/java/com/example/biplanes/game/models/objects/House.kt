@@ -35,21 +35,100 @@ class House(
     }
     
     // Добавляем метод для установки дома на уровень земли
-    fun setToGroundLevel(groundLevel: Float) {
-        position.y = groundLevel + 5f
+    fun setToGroundLevel(groundHeight: Float) {
+        // Устанавливаем позицию дома так, чтобы он стоял на земле
+        position.y = groundHeight - height / 2f
+        
         // Обновляем прямоугольник дома
         rect.set(
-            position.x - width / 2,
-            position.y - height,
-            position.x + width / 2,
-            position.y
+            position.x - width / 2f,
+            position.y - height / 2f,
+            position.x + width / 2f,
+            position.y + height / 2f
         )
     }
 
-    // Добавляем метод для обновления анимации
+    /**
+     * Обновляет состояние дома (анимация флага)
+     * @param deltaTime время, прошедшее с последнего обновления (в секундах)
+     */
     fun update(deltaTime: Float) {
-        animationTime += deltaTime
-        flagWavePhase = (animationTime * 5f) % (2f * Math.PI.toFloat())
+        // Увеличиваем счетчик анимации для волнообразного движения флага
+        animationTime += deltaTime * 5f  // Увеличиваем скорость анимации
+        
+        // Увеличиваем фазу волны флага для движения
+        flagWavePhase += deltaTime * 10f  // Значительно увеличиваем скорость движения флага
+        
+        // Обновляем путь для флага - создаем волнообразное движение
+        updateFlagPath()
+    }
+    
+    /**
+     * Обновляет путь для флага, создавая волнообразное движение
+     */
+    private fun updateFlagPath() {
+        // Сбрасываем путь
+        flagPath.reset()
+        
+        // Начальные координаты флага - используем ту же X-координату, что и для флагштока
+        val flagPoleX = rect.right - width / 8
+        val flagPoleY = rect.top - height / 2 // Верхняя точка флагштока
+        
+        // Ширина и высота флага
+        val flagWidth = width * 0.4f
+        val flagHeight = height * 0.25f
+        
+        // Начинаем путь от верхней части флагштока
+        flagPath.moveTo(flagPoleX, flagPoleY)
+        
+        // Амплитуда волны флага (увеличена для более заметного эффекта)
+        val waveAmplitude = flagHeight * 0.2f
+        
+        // Частота волны
+        val waveFrequency = 0.1f
+        
+        // Рисуем верхнюю часть флага с волнообразным движением
+        for (i in 0..20) {
+            val normalizedX = i / 20f
+            val x = flagPoleX + normalizedX * flagWidth
+            
+            // Создаем волнообразное движение с использованием синусоиды
+            // Амплитуда увеличивается по мере удаления от флагштока
+            val amplitude = waveAmplitude * normalizedX * 2.5f
+            
+            // Добавляем фазу для движения волны со временем
+            val waveY = amplitude * Math.sin((normalizedX * 10 + flagWavePhase) * waveFrequency * Math.PI * 2).toFloat()
+            
+            // Верхняя часть флага
+            val y = flagPoleY + waveY
+            
+            flagPath.lineTo(x, y)
+        }
+        
+        // Добавляем правую вертикальную сторону флага
+        flagPath.lineTo(flagPoleX + flagWidth, flagPoleY + flagHeight)
+        
+        // Рисуем нижнюю часть флага с волнообразным движением в обратном направлении
+        for (i in 20 downTo 0) {
+            val normalizedX = i / 20f
+            val x = flagPoleX + normalizedX * flagWidth
+            
+            // Создаем волнообразное движение с использованием синусоиды
+            // Амплитуда увеличивается по мере удаления от флагштока
+            val amplitude = waveAmplitude * normalizedX * 2.5f
+            
+            // Добавляем фазу для движения волны со временем
+            // Для нижней части используем другой паттерн волны
+            val waveY = amplitude * Math.sin((normalizedX * 10 + flagWavePhase + 1) * waveFrequency * Math.PI * 2).toFloat()
+            
+            // Нижняя часть флага
+            val y = flagPoleY + flagHeight + waveY
+            
+            flagPath.lineTo(x, y)
+        }
+        
+        // Замыкаем путь
+        flagPath.close()
     }
 
     fun draw(canvas: Canvas, paint: Paint) {
@@ -170,25 +249,6 @@ class House(
         
         // Рисуем развевающийся флаг
         paint.color = Color.RED
-        flagPath.reset()
-        flagPath.moveTo(flagpoleX, flagpoleEndY)
-        
-        // Добавляем волнистую форму флага с анимацией
-        val flagWidth = width / 3
-        val flagHeight = height / 4
-        val waveAmplitude = flagHeight / 4
-        
-        for (i in 0..10) {
-            val x = flagpoleX + (i * flagWidth / 10)
-            val waveOffset = sin(flagWavePhase + i * 0.5f) * waveAmplitude
-            flagPath.lineTo(x, flagpoleEndY + waveOffset)
-        }
-        
-        // Завершаем контур флага
-        flagPath.lineTo(flagpoleX + flagWidth, flagpoleEndY + flagHeight / 2)
-        flagPath.lineTo(flagpoleX, flagpoleEndY + flagHeight / 2)
-        flagPath.close()
-        
         canvas.drawPath(flagPath, paint)
         
         // Добавляем обводку флага
@@ -197,7 +257,7 @@ class House(
         paint.strokeWidth = 1f
         canvas.drawPath(flagPath, paint)
         
-        // Рисуем табличку "HANGAR" на доме
+        // Рисуем табличку "respawn" на доме
         paint.color = Color.WHITE
         paint.style = Paint.Style.FILL
         val signRect = RectF(
@@ -211,7 +271,7 @@ class House(
         paint.color = Color.BLACK
         paint.textSize = height / 6
         paint.textAlign = Paint.Align.CENTER
-        canvas.drawText("HANGAR", rect.centerX(), rect.top + height / 4, paint)
+        canvas.drawText("RESPAWN", rect.centerX(), rect.top + height / 4, paint)
         
         // Восстанавливаем оригинальные настройки Paint
         paint.color = originalColor

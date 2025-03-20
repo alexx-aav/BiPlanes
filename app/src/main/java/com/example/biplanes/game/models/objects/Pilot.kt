@@ -31,6 +31,11 @@ class Pilot(
     var rotation = 0f
     var rotationVelocity = 0f
     
+    // Размеры экрана и земля
+    var screenWidth = 0f
+    var screenHeight = 0f
+    var groundLevel = 0f
+    
     // Состояния пилота
     var isEjected = false
     var isRescued = false
@@ -93,6 +98,24 @@ class Pilot(
     }
     
     /**
+     * Расширенный конструктор с параметрами экрана
+     */
+    constructor(
+        position: Vector2D,
+        screenWidth: Float,
+        screenHeight: Float,
+        groundLevel: Float
+    ) : this(Color.BLUE, 20f) {
+        this.position = position
+        this.isEjected = true
+        this.state = State.FALLING
+        this.screenWidth = screenWidth
+        this.screenHeight = screenHeight
+        this.groundLevel = groundLevel
+        Log.d(TAG, "Создан пилот с позицией $position и параметрами экрана: ширина=$screenWidth, высота=$screenHeight, земля=$groundLevel")
+    }
+    
+    /**
      * Обновление состояния пилота
      */
     fun update(deltaTime: Float = 0.016f) {
@@ -104,32 +127,48 @@ class Pilot(
         // Увеличиваем время с момента катапультирования
         ejectionTime += safeDeltaTime
         
-        // ПРИНУДИТЕЛЬНАЯ ГРАВИТАЦИЯ - ВСЕГДА применяем гравитацию к пилоту без парашюта
-        if (state != State.PARACHUTING) {
-            // Прямое значение гравитации без множителей, чтобы гарантировать движение вниз
-            velocity.y += 4.0f * safeDeltaTime * 60f  // ОЧЕНЬ СИЛЬНАЯ ГРАВИТАЦИЯ
+        // ВАЖНАЯ ПРОВЕРКА - isOnGround должен устанавливаться только при контакте с землей
+        // Сбрасываем некорректное состояние флага isOnGround для состояний, где пилот не может быть на земле
+        if (isOnGround && (state == State.EJECTING || state == State.FALLING || state == State.DEPLOYING || state == State.PARACHUTING)) {
+            Log.d(TAG, "ИСПРАВЛЕНИЕ: сброс некорректного флага isOnGround в состоянии $state на позиции $position")
+            isOnGround = false
         }
         
         // Обязательно логируем каждое обновление для отладки
         if (ejectionTime < 10.0f && ejectionTime % 0.2f < 0.02f) {
             Log.d(TAG, "ОТЛАДКА: стадия=$state, позиция=${position.x.toInt()},${position.y.toInt()}, " +
-                  "скорость=${velocity.x.toInt()},${velocity.y.toInt()}, время=$ejectionTime")
+                  "скорость=${velocity.x.toInt()},${velocity.y.toInt()}, время=$ejectionTime, onGround=$isOnGround")
         }
         
         // ОЧЕНЬ ВАЖНО - ЕСЛИ САМОЛЕТ КАТАПУЛЬТИРОВАЛСЯ НИЗКО
         // Немедленно открываем парашют, если пилот уже близко к земле
-        if (state == State.FALLING && parachuteOpenTime < parachuteOpenDelay && position.y > 1500) {
+        if (state == State.FALLING && parachuteOpenTime < parachuteOpenDelay && 
+            position.y > groundLevel - 200) {
             parachuteOpenTime = parachuteOpenDelay  // Принудительно запускаем раскрытие парашюта
-            Log.d(TAG, "ПРИНУДИТЕЛЬНОЕ открытие парашюта из-за близости к земле! y=${position.y}")
+            Log.d(TAG, "ПРИНУДИТЕЛЬНОЕ открытие парашюта из-за близости к земле! y=${position.y}, groundLevel=$groundLevel")
         }
         
         when (state) {
             State.EJECTING -> {
+                // Проверяем, не на земле ли пилот
+                if (position.y >= groundLevel) {
+                    // Если пилот уже на земле, сразу переводим в RUNNING
+                    state = State.RUNNING
+                    velocity = Vector2D(if (Random.nextBoolean()) runningSpeed else -runningSpeed, 0f)
+                    position.y = groundLevel
+                    isOnGround = true
+                    Log.d(TAG, "ПРИНУДИТЕЛЬНЫЙ ПЕРЕХОД: EJECTING -> RUNNING (уже на земле), pos=$position")
+                    return
+                }
+                
                 // Первая стадия катапультирования - быстро переходим в FALLING
                 if (ejectionTime > 0.1f) {
                     state = State.FALLING
                     Log.d(TAG, "ПЕРЕХОД: EJECTING -> FALLING, pos=$position, vel=$velocity")
                 }
+                
+                // ВАЖНО - добавляем гравитацию
+                velocity.y += gravityValue * safeDeltaTime * 60f
                 
                 // Случайное вращение
                 rotation += rotationVelocity * safeDeltaTime * 60f
@@ -137,8 +176,19 @@ class Pilot(
             }
             
             State.FALLING -> {
+                // НОВОЕ ИСПРАВЛЕНИЕ: Проверяем, не на земле ли пилот
+                if (position.y >= groundLevel) {
+                    // Если пилот уже на земле, сразу переводим в RUNNING
+                    state = State.RUNNING
+                    velocity = Vector2D(if (Random.nextBoolean()) runningSpeed else -runningSpeed, 0f)
+                    position.y = groundLevel
+                    isOnGround = true
+                    Log.d(TAG, "ПРИНУДИТЕЛЬНЫЙ ПЕРЕХОД: FALLING -> RUNNING (уже на земле), pos=$position")
+                    return
+                }
+                
                 // ПРЯМАЯ СИЛА ГРАВИТАЦИИ вместо косвенных вычислений
-                velocity.y += gravityValue * 2f // Дополнительная гравитация для падения
+                velocity.y += gravityValue * safeDeltaTime * 60f
                 
                 // Применяем сопротивление воздуха
                 val speed = velocity.length()
@@ -174,13 +224,24 @@ class Pilot(
             }
             
             State.DEPLOYING -> {
+                // НОВОЕ ИСПРАВЛЕНИЕ: Проверяем, не на земле ли пилот
+                if (position.y >= groundLevel) {
+                    // Если пилот уже на земле, сразу переводим в RUNNING
+                    state = State.RUNNING
+                    velocity = Vector2D(if (Random.nextBoolean()) runningSpeed else -runningSpeed, 0f)
+                    position.y = groundLevel
+                    isOnGround = true
+                    Log.d(TAG, "ПРИНУДИТЕЛЬНЫЙ ПЕРЕХОД: DEPLOYING -> RUNNING (уже на земле), pos=$position")
+                    return
+                }
+                
                 // Прогресс раскрытия парашюта
                 parachuteDeploymentProgress += safeDeltaTime / parachuteDeployTime
                 parachuteDeploymentProgress = min(1.0f, parachuteDeploymentProgress)
                 
                 // Применяем гравитацию, но уменьшаем её по мере раскрытия парашюта
                 val gravityFactor = 1.0f - min(0.8f, parachuteDeploymentProgress)
-                velocity.y += gravityValue * gravityFactor
+                velocity.y += gravityValue * gravityFactor * safeDeltaTime * 60f
                 
                 // Увеличиваем сопротивление воздуха по мере раскрытия парашюта
                 val resistanceFactor = min(1.0f, parachuteDeploymentProgress)
@@ -210,8 +271,20 @@ class Pilot(
             }
             
             State.PARACHUTING -> {
+                // НОВОЕ ИСПРАВЛЕНИЕ: Проверяем, не на земле ли пилот
+                if (position.y >= groundLevel) {
+                    // Если пилот уже на земле, сразу переводим в LANDING
+                    state = State.LANDING
+                    groundContactTime = 0f
+                    velocity = Vector2D(velocity.x * 0.5f, 0f)
+                    position.y = groundLevel
+                    isOnGround = true
+                    Log.d(TAG, "ПРИНУДИТЕЛЬНЫЙ ПЕРЕХОД: PARACHUTING -> LANDING (уже на земле), pos=$position")
+                    return
+                }
+            
                 // Применяем гравитацию, но с меньшей силой
-                velocity.y += gravityValue * 0.3f
+                velocity.y += gravityValue * 0.3f * safeDeltaTime * 60f
                 
                 // Сильное сопротивление из-за парашюта
                 val speed = velocity.length()
@@ -235,6 +308,20 @@ class Pilot(
             }
             
             State.LANDING -> {
+                // Проверяем, что пилот находится на земле
+                if (position.y < groundLevel) {
+                    position.y = groundLevel
+                    isOnGround = true
+                }
+                
+                // Дополнительная защита от застревания - если позиция не меняется или меняется очень медленно
+                if (Math.abs(velocity.y) < 0.1f && groundContactTime > 0.3f) {
+                    state = State.RUNNING
+                    velocity = Vector2D(if (Random.nextBoolean()) runningSpeed else -runningSpeed, 0f)
+                    Log.d(TAG, "ПРИНУДИТЕЛЬНЫЙ ПЕРЕХОД: LANDING -> RUNNING (застрял), pos=$position")
+                    return
+                }
+                
                 // Увеличиваем время на земле
                 groundContactTime += safeDeltaTime
                 
@@ -245,11 +332,17 @@ class Pilot(
                 if (groundContactTime >= groundRecoveryTime) {
                     state = State.RUNNING
                     // Устанавливаем начальную скорость бега в случайном направлении
-                    velocity = velocity.add(Vector2D(if (Random.nextBoolean()) runningSpeed else -runningSpeed, 0f))
+                    velocity = Vector2D(if (Random.nextBoolean()) runningSpeed else -runningSpeed, 0f)
                 }
             }
             
             State.RUNNING -> {
+                // Проверяем, что пилот находится на земле
+                if (position.y < groundLevel) {
+                    position.y = groundLevel
+                    isOnGround = true
+                }
+                
                 // Обновляем анимацию бега
                 runningAnimationTime += safeDeltaTime * runningAnimationSpeed
                 
@@ -281,11 +374,11 @@ class Pilot(
                 } ?: run {
                     // Если дом не определен, бежим в случайном направлении
                     // Ограничиваем скорость бега
-                    velocity = velocity.add(Vector2D(0f, -velocity.y))
+                    velocity = Vector2D(velocity.x, 0f)
                     
                     // Случайное изменение направления
                     if (Random.nextFloat() < 0.01f) {
-                        velocity = velocity.add(Vector2D(-velocity.x, 0f))
+                        velocity = Vector2D(-velocity.x, 0f)
                     }
                 }
             }
@@ -301,6 +394,34 @@ class Pilot(
         // Обновляем позицию, применяя скорость
         position.x += velocity.x * safeDeltaTime * 60f
         position.y += velocity.y * safeDeltaTime * 60f
+        
+        // НОВОЕ ИСПРАВЛЕНИЕ: Защита от бесконечного падения
+        if (position.y < 0) {
+            position.y = 0f  // Не позволяем пилоту выйти за верхнюю границу экрана
+            velocity.y = Math.abs(velocity.y) * 0.5f // Меняем направление с затуханием
+        }
+        
+        // НОВОЕ ИСПРАВЛЕНИЕ: Проверка и корректировка позиции относительно земли
+        // Используем groundLevel вместо жестко заданной константы
+        if (position.y > groundLevel) {
+            position.y = groundLevel
+            velocity.y = 0f
+            
+            // Если еще не на земле, обрабатываем событие приземления
+            if (!isOnGround) {
+                isOnGround = true
+                Log.d(TAG, "ВАЖНОЕ ИСПРАВЛЕНИЕ: Пилот достиг земли, позиция исправлена на y=$groundLevel")
+                
+                // Переводим в соответствующее состояние в зависимости от текущего
+                if (state == State.PARACHUTING) {
+                    state = State.LANDING
+                    groundContactTime = 0f
+                } else if (state == State.FALLING || state == State.DEPLOYING || state == State.EJECTING) {
+                    state = State.RUNNING
+                    velocity.x = if (Random.nextBoolean()) runningSpeed else -runningSpeed
+                }
+            }
+        }
         
         // Логируем изменение позиции для отладки
         if (position.x == oldPosition.x && position.y == oldPosition.y && velocity.length() > 0.1f) {
@@ -381,82 +502,203 @@ class Pilot(
      * Отрисовка падающего пилота
      */
     private fun drawFallingPilot(canvas: Canvas, paint: Paint) {
-        // Рисуем тело пилота
+        // Сохраняем настройки краски
+        val originalColor = paint.color
+        val originalStyle = paint.style
+        val originalStrokeWidth = paint.strokeWidth
+        
+        // Рисуем туловище - цвет соответствует самолету
         paint.color = color
         paint.style = Paint.Style.FILL
-        canvas.drawCircle(0f, 0f, size / 2, paint)
+        canvas.drawRect(-size / 3, -size / 4, size / 3, size / 2, paint)
         
-        // Рисуем руки и ноги
-        paint.strokeWidth = size / 5
+        // Рисуем голову - телесный цвет
+        paint.color = 0xFFE6C8A5.toInt() // Телесный цвет для головы
+        paint.style = Paint.Style.FILL
+        canvas.drawCircle(0f, -size / 2, size / 3, paint)
+        
+        // Рисуем шлем пилота - цвет соответствует самолету
+        paint.color = color
+        canvas.drawArc(-size / 3, -size / 2 - size / 4, 
+                     size / 3, -size / 4, 
+                     180f, 180f, true, paint)
+        
+        // Рисуем руки и ноги - телесный цвет
+        paint.color = 0xFFE6C8A5.toInt() // Телесный цвет для конечностей
+        paint.strokeWidth = size / 6
         paint.style = Paint.Style.STROKE
         
         // Руки разведены в стороны при падении
-        canvas.drawLine(-size / 2, -size / 4, -size, -size / 2, paint)
-        canvas.drawLine(size / 2, -size / 4, size, -size / 2, paint)
+        canvas.drawLine(-size / 3, -size / 8, -size, -size / 2, paint)
+        canvas.drawLine(size / 3, -size / 8, size, -size / 2, paint)
         
         // Ноги слегка согнуты
         canvas.drawLine(0f, size / 2, -size / 2, size, paint)
         canvas.drawLine(0f, size / 2, size / 2, size, paint)
+        
+        // Рисуем ботинки - тёмный цвет
+        paint.color = 0xFF333333.toInt() // Темный цвет для ботинок
+        paint.style = Paint.Style.FILL
+        canvas.drawCircle(-size / 2, size, size / 5, paint)
+        canvas.drawCircle(size / 2, size, size / 5, paint)
+        
+        // Рисуем лицо - простые глаза и рот
+        paint.color = 0xFF333333.toInt() // Темный цвет для глаз
+        paint.strokeWidth = size / 15
+        
+        // Глаза
+        canvas.drawPoint(-size / 6, -size / 2, paint)
+        canvas.drawPoint(size / 6, -size / 2, paint)
+        
+        // Рот - нейтральное выражение при падении
+        paint.strokeWidth = size / 12
+        canvas.drawLine(-size / 6, -size / 2 + size / 4, 
+                      size / 6, -size / 2 + size / 4, paint)
+        
+        // Восстанавливаем настройки краски
+        paint.color = originalColor
+        paint.style = originalStyle
+        paint.strokeWidth = originalStrokeWidth
     }
     
     /**
      * Отрисовка пилота на парашюте
      */
     private fun drawParachutingPilot(canvas: Canvas, paint: Paint) {
-        // Рисуем тело пилота
+        // Сохраняем настройки краски
+        val originalColor = paint.color
+        val originalStyle = paint.style
+        val originalStrokeWidth = paint.strokeWidth
+        
+        // Рисуем туловище - цвет соответствует самолету
         paint.color = color
         paint.style = Paint.Style.FILL
-        canvas.drawCircle(0f, 0f, size / 2, paint)
+        canvas.drawRect(-size / 3, -size / 4, size / 3, size / 2, paint)
         
-        // Рисуем руки и ноги
-        paint.strokeWidth = size / 5
+        // Рисуем голову - телесный цвет
+        paint.color = 0xFFE6C8A5.toInt() // Телесный цвет для головы
+        paint.style = Paint.Style.FILL
+        canvas.drawCircle(0f, -size / 2, size / 3, paint)
+        
+        // Рисуем шлем пилота - цвет соответствует самолету
+        paint.color = color
+        canvas.drawArc(-size / 3, -size / 2 - size / 4, 
+                     size / 3, -size / 4, 
+                     180f, 180f, true, paint)
+        
+        // Рисуем руки и ноги - телесный цвет
+        paint.color = 0xFFE6C8A5.toInt() // Телесный цвет для конечностей
+        paint.strokeWidth = size / 6
         paint.style = Paint.Style.STROKE
         
         // Руки подняты вверх, держатся за стропы
-        canvas.drawLine(-size / 2, -size / 4, -size / 2, -size, paint)
-        canvas.drawLine(size / 2, -size / 4, size / 2, -size, paint)
+        canvas.drawLine(-size / 3, -size / 8, -size / 2, -size, paint)
+        canvas.drawLine(size / 3, -size / 8, size / 2, -size, paint)
         
         // Ноги вместе, слегка согнуты
-        canvas.drawLine(0f, size / 2, -size / 4, size, paint)
-        canvas.drawLine(0f, size / 2, size / 4, size, paint)
+        canvas.drawLine(-size / 8, size / 2, -size / 4, size, paint)
+        canvas.drawLine(size / 8, size / 2, size / 4, size, paint)
+        
+        // Рисуем ботинки - тёмный цвет
+        paint.color = 0xFF333333.toInt() // Темный цвет для ботинок
+        paint.style = Paint.Style.FILL
+        canvas.drawCircle(-size / 4, size, size / 5, paint)
+        canvas.drawCircle(size / 4, size, size / 5, paint)
+        
+        // Рисуем лицо - простые глаза и улыбка (при парашютировании)
+        paint.color = 0xFF333333.toInt() // Темный цвет для глаз
+        paint.strokeWidth = size / 15
+        
+        // Глаза
+        canvas.drawPoint(-size / 6, -size / 2, paint)
+        canvas.drawPoint(size / 6, -size / 2, paint)
+        
+        // Рот - улыбка при парашютировании
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = size / 12
+        canvas.drawArc(-size / 6, -size / 2 + size / 8, 
+                     size / 6, -size / 2 + size / 3, 
+                     0f, 180f, false, paint)
+        
+        // Восстанавливаем настройки краски
+        paint.color = originalColor
+        paint.style = originalStyle
+        paint.strokeWidth = originalStrokeWidth
     }
     
     /**
      * Отрисовка приземляющегося пилота
      */
     private fun drawLandingPilot(canvas: Canvas, paint: Paint) {
-        // Рисуем тело пилота
+        // Сохраняем настройки краски
+        val originalColor = paint.color
+        val originalStyle = paint.style
+        val originalStrokeWidth = paint.strokeWidth
+        
+        // Рисуем туловище - цвет соответствует самолету
         paint.color = color
         paint.style = Paint.Style.FILL
-        canvas.drawCircle(0f, 0f, size / 2, paint)
+        canvas.drawRect(-size / 3, -size / 4, size / 3, size / 2, paint)
         
-        // Рисуем руки и ноги
-        paint.strokeWidth = size / 5
+        // Рисуем голову - телесный цвет
+        paint.color = 0xFFE6C8A5.toInt() // Телесный цвет для головы
+        paint.style = Paint.Style.FILL
+        canvas.drawCircle(0f, -size / 2, size / 3, paint)
+        
+        // Рисуем шлем пилота - цвет соответствует самолету
+        paint.color = color
+        canvas.drawArc(-size / 3, -size / 2 - size / 4, 
+                     size / 3, -size / 4, 
+                     180f, 180f, true, paint)
+        
+        // Рисуем руки и ноги - телесный цвет
+        paint.color = 0xFFE6C8A5.toInt() // Телесный цвет для конечностей
+        paint.strokeWidth = size / 6
         paint.style = Paint.Style.STROKE
         
         // Руки в стороны для баланса
-        canvas.drawLine(-size / 2, -size / 4, -size, 0f, paint)
-        canvas.drawLine(size / 2, -size / 4, size, 0f, paint)
+        canvas.drawLine(-size / 3, -size / 8, -size, 0f, paint)
+        canvas.drawLine(size / 3, -size / 8, size, 0f, paint)
         
         // Ноги согнуты в коленях для амортизации
-        canvas.drawLine(0f, size / 2, -size / 2, size * 0.8f, paint)
+        canvas.drawLine(-size / 8, size / 2, -size / 2, size * 0.8f, paint)
         canvas.drawLine(-size / 2, size * 0.8f, -size / 3, size * 1.2f, paint)
-        canvas.drawLine(0f, size / 2, size / 2, size * 0.8f, paint)
+        canvas.drawLine(size / 8, size / 2, size / 2, size * 0.8f, paint)
         canvas.drawLine(size / 2, size * 0.8f, size / 3, size * 1.2f, paint)
+        
+        // Рисуем ботинки - тёмный цвет
+        paint.color = 0xFF333333.toInt() // Темный цвет для ботинок
+        paint.style = Paint.Style.FILL
+        canvas.drawCircle(-size / 3, size * 1.2f, size / 5, paint)
+        canvas.drawCircle(size / 3, size * 1.2f, size / 5, paint)
+        
+        // Рисуем лицо - простые глаза и сконцентрированный вид при приземлении
+        paint.color = 0xFF333333.toInt() // Темный цвет для глаз
+        paint.strokeWidth = size / 15
+        
+        // Глаза
+        canvas.drawPoint(-size / 6, -size / 2, paint)
+        canvas.drawPoint(size / 6, -size / 2, paint)
+        
+        // Рот - сконцентрированный вид при приземлении
+        paint.strokeWidth = size / 12
+        canvas.drawLine(-size / 6, -size / 2 + size / 4, 
+                      size / 6, -size / 2 + size / 4, paint)
+        
+        // Восстанавливаем настройки краски
+        paint.color = originalColor
+        paint.style = originalStyle
+        paint.strokeWidth = originalStrokeWidth
     }
     
     /**
      * Отрисовка бегущего пилота
      */
     private fun drawRunningPilot(canvas: Canvas, paint: Paint) {
-        // Рисуем тело пилота
-        paint.color = color
-        paint.style = Paint.Style.FILL
-        canvas.drawCircle(0f, 0f, size / 2, paint)
-        
-        // Рисуем руки и ноги с анимацией
-        paint.strokeWidth = size / 5
-        paint.style = Paint.Style.STROKE
+        // Сохраняем настройки краски
+        val originalColor = paint.color
+        val originalStyle = paint.style
+        val originalStrokeWidth = paint.strokeWidth
         
         // Определяем направление бега
         val direction = if (velocity.x >= 0) 1 else -1
@@ -465,27 +707,89 @@ class Pilot(
         val armAngle = sin(runningAnimationTime) * 45f * limbSwingFactor
         val legAngle = sin(runningAnimationTime + PI.toFloat() / 2) * 30f * limbSwingFactor
         
-        // Руки
+        // Рисуем туловище - цвет соответствует самолету
+        paint.color = color
+        paint.style = Paint.Style.FILL
+        canvas.drawRect(-size / 3, -size / 4, size / 3, size / 2, paint)
+        
+        // Рисуем голову - телесный цвет
+        paint.color = 0xFFE6C8A5.toInt() // Телесный цвет для головы
+        paint.style = Paint.Style.FILL
+        canvas.drawCircle(0f, -size / 2, size / 3, paint)
+        
+        // Рисуем шлем пилота - цвет соответствует самолету
+        paint.color = color
+        // Шлем повернут в направлении бега
+        if (direction > 0) {
+            canvas.drawArc(-size / 3, -size / 2 - size / 4, 
+                         size / 3, -size / 4, 
+                         180f, 180f, true, paint)
+        } else {
+            canvas.drawArc(-size / 3, -size / 2 - size / 4, 
+                         size / 3, -size / 4, 
+                         180f, 180f, true, paint)
+        }
+        
+        // Рисуем руки - телесный цвет
+        paint.color = 0xFFE6C8A5.toInt() // Телесный цвет для конечностей
+        paint.strokeWidth = size / 6
+        paint.style = Paint.Style.STROKE
+        
+        // Руки с анимацией бега
         canvas.save()
         canvas.rotate(armAngle)
-        canvas.drawLine(0f, -size / 4, direction * size, 0f, paint)
+        canvas.drawLine(0f, -size / 8, direction * size, 0f, paint)
         canvas.restore()
         
         canvas.save()
         canvas.rotate(-armAngle)
-        canvas.drawLine(0f, -size / 4, -direction * size, 0f, paint)
+        canvas.drawLine(0f, -size / 8, -direction * size, 0f, paint)
         canvas.restore()
         
-        // Ноги
+        // Ноги с анимацией бега
         canvas.save()
         canvas.rotate(legAngle)
-        canvas.drawLine(0f, size / 4, direction * size / 2, size, paint)
+        canvas.drawLine(0f, size / 2, direction * size / 2, size * 1.2f, paint)
         canvas.restore()
         
         canvas.save()
         canvas.rotate(-legAngle)
-        canvas.drawLine(0f, size / 4, -direction * size / 2, size, paint)
+        canvas.drawLine(0f, size / 2, -direction * size / 2, size * 1.2f, paint)
         canvas.restore()
+        
+        // Рисуем ботинки - тёмный цвет с анимацией
+        paint.color = 0xFF333333.toInt() // Темный цвет для ботинок
+        paint.style = Paint.Style.FILL
+        
+        canvas.save()
+        canvas.rotate(legAngle)
+        canvas.drawCircle(direction * size / 2, size * 1.2f, size / 5, paint)
+        canvas.restore()
+        
+        canvas.save()
+        canvas.rotate(-legAngle)
+        canvas.drawCircle(-direction * size / 2, size * 1.2f, size / 5, paint)
+        canvas.restore()
+        
+        // Рисуем лицо - простые глаза и улыбка при беге
+        paint.color = 0xFF333333.toInt() // Темный цвет для глаз
+        paint.strokeWidth = size / 15
+        
+        // Глаза - смотрят в направлении бега
+        canvas.drawPoint(-size / 6 + direction * size / 10, -size / 2, paint)
+        canvas.drawPoint(size / 6 + direction * size / 10, -size / 2, paint)
+        
+        // Рот - улыбка при беге
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = size / 12
+        canvas.drawArc(-size / 6, -size / 2 + size / 8, 
+                     size / 6, -size / 2 + size / 3, 
+                     0f, 180f, false, paint)
+        
+        // Восстанавливаем настройки краски
+        paint.color = originalColor
+        paint.style = originalStyle
+        paint.strokeWidth = originalStrokeWidth
     }
     
     /**
@@ -588,19 +892,19 @@ class Pilot(
         ejectionTime = 0f
         parachuteOpenTime = 0f
         
-        // Начальный импульс вверх - УМЕНЬШАЕМ до разумных значений
+        // Увеличиваем начальный импульс катапультирования для более мощного выброса
         velocity = Vector2D(
-            (Random.nextFloat() - 0.5f) * 3f, // Случайное горизонтальное движение
-            -8.0f  // Умеренный начальный импульс вверх (было -15.0f)
+            (Random.nextFloat() - 0.5f) * 5f, // Усиленное случайное горизонтальное движение (было 3f)
+            -12.0f  // Более сильный начальный импульс вверх (было -8.0f)
         )
         
-        // Устанавливаем вращение
-        rotationVelocity = (Random.nextFloat() - 0.5f) * 20f
+        // Увеличиваем скорость вращения для более реалистичного катапультирования
+        rotationVelocity = (Random.nextFloat() - 0.5f) * 30f // Усиленное вращение (было 20f)
         
         // Отсоединяем пилота от самолета
         plane = null
         
-        Log.d(TAG, "КАТАПУЛЬТИРОВАНИЕ! позиция=$position, скорость=$velocity")
+        Log.d(TAG, "КАТАПУЛЬТИРОВАНИЕ! позиция=$position, скорость=$velocity, вращение=$rotationVelocity")
     }
     
     /**
@@ -618,31 +922,49 @@ class Pilot(
      * Обработка контакта с землей
      */
     fun onGroundContact(groundLevel: Float) {
-        if (state == State.PARACHUTING) {
-            // Устанавливаем позицию на уровне земли
-            position = Vector2D(position.x, groundLevel)
-            
-            // Переходим в состояние приземления
-            state = State.LANDING
-            isOnGround = true
-            groundContactTime = 0f
-            
-            // Сбрасываем скорость
-            velocity = Vector2D(velocity.x * 0.5f, 0f)
-            
-            Log.d(TAG, "Pilot landed on ground at position (${position.x}, $groundLevel)")
-        } else if (state == State.FALLING || state == State.DEPLOYING) {
-            // Если пилот падает без парашюта или с не полностью раскрытым парашютом,
-            // то он разбивается (в реальной игре здесь можно добавить анимацию гибели)
-            position = Vector2D(position.x, groundLevel)
-            isOnGround = true
-            velocity = Vector2D(0f, 0f)
-            
-            // В данной реализации просто переводим в состояние бега
-            state = State.RUNNING
-            velocity = Vector2D(if (Random.nextBoolean()) runningSpeed else -runningSpeed, 0f)
-            
-            Log.d(TAG, "Pilot crashed on ground at position (${position.x}, $groundLevel)")
+        // УЛУЧШЕНИЕ: Используем более строгую проверку высоты
+        if (position.y >= groundLevel - 10) {
+            // Перестраховка - проверяем, был ли пилот выше земли до этого
+            if (!isOnGround) {
+                Log.d(TAG, "Контакт с землей: позиция=${position.x},${position.y}, состояние=$state, земля=$groundLevel")
+                
+                // Фиксируем позицию пилота точно на уровне земли
+                position.y = groundLevel
+                velocity.y = 0f  // Останавливаем вертикальное движение
+                isOnGround = true
+                
+                // Обрабатываем разные состояния при контакте с землей
+                when (state) {
+                    State.PARACHUTING -> {
+                        state = State.LANDING
+                        groundContactTime = 0f
+                        velocity.x *= 0.5f  // Замедляем горизонтальную скорость
+                        Log.d(TAG, "Пилот приземлился с парашютом")
+                    }
+                    State.FALLING, State.DEPLOYING -> {
+                        // Пилот упал без парашюта
+                        state = State.RUNNING
+                        velocity.x = if (Random.nextBoolean()) runningSpeed else -runningSpeed
+                        Log.d(TAG, "Пилот упал без парашюта, переход к бегу")
+                    }
+                    State.EJECTING -> {
+                        // Пилот приземлился сразу после катапультирования
+                        state = State.RUNNING
+                        velocity.x = if (Random.nextBoolean()) runningSpeed else -runningSpeed
+                        Log.d(TAG, "Пилот приземлился сразу после катапультирования")
+                    }
+                    else -> {
+                        // Для других состояний ничего особого не делаем
+                        Log.d(TAG, "Пилот на земле в состоянии $state")
+                    }
+                }
+            }
+        } else {
+            // Если пилот не на земле, но флаг isOnGround установлен - исправляем
+            if (isOnGround && position.y < groundLevel - 20) {
+                isOnGround = false
+                Log.d(TAG, "ИСПРАВЛЕНИЕ: Сброс флага isOnGround для пилота, который не на земле: y=${position.y}, земля=$groundLevel")
+            }
         }
     }
     

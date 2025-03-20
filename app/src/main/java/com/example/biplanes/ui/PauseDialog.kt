@@ -34,15 +34,23 @@ class PauseDialog(context: Context) : BaseDialog(context) {
         }
     }
 
+    /**
+     * Метод для установки слушателя на кнопку возобновления игры
+     * @param listener функция, которая будет вызвана при нажатии на кнопку
+     */
     fun setOnResumeListener(listener: () -> Unit) {
         onResumeListener = listener
     }
 
-    fun setOnRestartListener(listener: () -> Unit) {
-        onRestartListener = listener
-    }
-
+    /**
+     * Метод для установки слушателя на кнопку выхода из игры
+     * @param listener функция, которая будет вызвана при нажатии на кнопку
+     */
     fun setOnExitListener(listener: () -> Unit) {
         onExitListener = listener
+    }
+
+    fun setOnRestartListener(listener: () -> Unit) {
+        onRestartListener = listener
     }
 } 

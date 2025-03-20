@@ -18,6 +18,9 @@ import android.widget.Toast
 import java.util.ArrayList
 import android.app.AlertDialog
 import android.view.MotionEvent
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 
 /**
  * Активность для игры Biplanes.
@@ -25,6 +28,9 @@ import android.view.MotionEvent
  */
 class GameActivity : AppCompatActivity(), WiFiDirectService.WiFiDirectListener {
     private val TAG = "GameActivity"
+
+    // Константы для запросов разрешений
+    private val PERMISSION_REQUEST_WRITE_STORAGE = 101
 
     // Параметры игры
     private var gameType: GameType = GameType.TRAINING
@@ -148,6 +154,9 @@ class GameActivity : AppCompatActivity(), WiFiDirectService.WiFiDirectListener {
         
         // Кнопка перезапуска
         binding.restartButton.setOnClickListener { restartGame() }
+
+        // Кнопка сохранения логов
+        binding.saveLogsButton.setOnClickListener { saveGameLogs() }
 
         // Метод для обработки нажатий на кнопки
         setupButtons()
@@ -306,14 +315,17 @@ class GameActivity : AppCompatActivity(), WiFiDirectService.WiFiDirectListener {
         try {
             Log.d(TAG, "Показываем экран окончания игры")
             
-            // Показываем оверлей окончания игры
-            binding.gameOverOverlay.visibility = View.VISIBLE
-            
-            // Устанавливаем флаг окончания игры
-            binding.gameView.setGameOver(true)
-            
-            // Останавливаем обновление джойстика
-            stopJoystickUpdates()
+            // Используем runOnUiThread для обновления UI из основного потока
+            runOnUiThread {
+                // Показываем оверлей окончания игры
+                binding.gameOverOverlay.visibility = View.VISIBLE
+                
+                // Устанавливаем флаг окончания игры
+                binding.gameView.setGameOver(true)
+                
+                // Останавливаем обновление джойстика
+                stopJoystickUpdates()
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Ошибка при показе экрана окончания игры: ${e.message}")
         }
@@ -712,8 +724,73 @@ class GameActivity : AppCompatActivity(), WiFiDirectService.WiFiDirectListener {
         }
     }
 
+    /**
+     * Метод для сохранения игровых логов
+     */
+    private fun saveGameLogs() {
+        try {
+            // Проверяем разрешения для Android 6.0-9.0
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && 
+                Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+                val hasWritePermission = checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) == 
+                    PackageManager.PERMISSION_GRANTED
+                
+                if (!hasWritePermission) {
+                    // Запрашиваем разрешение
+                    requestPermissions(
+                        arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE), 
+                        PERMISSION_REQUEST_WRITE_STORAGE
+                    )
+                    return
+                }
+            }
+            
+            // Используем LogManager для сохранения логов
+            val result = com.example.biplanes.game.utils.LogManager.saveLogsToFile(this)
+            
+            // Показываем результат пользователю
+            val message = if (result) {
+                "Логи успешно сохранены в папку Downloads"
+            } else {
+                "Не удалось сохранить логи"
+            }
+            
+            Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+            Log.d(TAG, "Попытка сохранения логов: $result")
+        } catch (e: Exception) {
+            Log.e(TAG, "Ошибка при сохранении логов: ${e.message}", e)
+            Toast.makeText(this, "Ошибка: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     private fun startGame() {
         isGameStarted = true
         startJoystickUpdates()
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        
+        when (requestCode) {
+            PERMISSION_REQUEST_WRITE_STORAGE -> {
+                // Если запрос был отменен, то массив результатов будет пустым
+                if (grantResults.isNotEmpty() && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                    // Разрешение получено, продолжаем сохранение логов
+                    saveGameLogs()
+                } else {
+                    // Разрешение не получено, показываем сообщение
+                    Toast.makeText(
+                        this, 
+                        "Для сохранения логов необходимо разрешение на запись файлов", 
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+                return
+            }
+        }
     }
 } 

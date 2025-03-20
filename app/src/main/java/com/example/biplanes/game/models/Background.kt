@@ -6,6 +6,7 @@ import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.Shader
+import kotlin.math.sin
 import kotlin.random.Random
 
 /**
@@ -66,7 +67,8 @@ class Background(
                     baseSize = baseSize,
                     width = width,
                     speed = Random.nextFloat() * 0.5f + 0.2f,
-                    bubbles = generateCloudBubbles(baseSize)
+                    bubbles = generateCloudBubbles(baseSize),
+                    scale = 0.5f + Random.nextFloat() * 0.5f
                 )
             )
         }
@@ -128,17 +130,30 @@ class Background(
 
     /**
      * Обновляет состояние фона
-     * @param deltaTime время, прошедшее с последнего обновления
+     * @param deltaTime время, прошедшее с последнего обновления (в секундах)
      */
     fun update(deltaTime: Float) {
-        // Обновляем позиции облаков
+        // Обновляем положение каждого облака
         clouds.forEach { cloud ->
-            cloud.x += cloud.speed * deltaTime * 60f // Учитываем deltaTime для корректного движения
-            if (cloud.x > screenWidth + cloud.width) {
-                cloud.x = -cloud.width
-                cloud.y = Random.nextFloat() * (screenHeight * 0.4f)
-                // Обновляем форму облака при его перемещении
-                cloud.bubbles = generateCloudBubbles(cloud.baseSize)
+            // Скорость движения облака пропорциональна его размеру
+            // (более крупные облака двигаются медленнее)
+            val speed = cloud.speed * (1f - cloud.scale * 0.5f)
+            
+            // Перемещаем облако влево
+            cloud.x -= speed * deltaTime * 60f  // Масштабируем скорость с учетом deltaTime
+            
+            // Добавляем небольшой вертикальный дрейф
+            cloud.y += sin(cloud.x * 0.01f) * 0.2f * deltaTime * 60f
+            
+            // Если облако вышло за левую границу экрана, перемещаем его обратно вправо
+            if (cloud.x + cloud.width < 0) {
+                cloud.x = screenWidth + Random.nextFloat() * 100f
+                
+                // Немного изменяем высоту облака для разнообразия
+                cloud.y = Random.nextFloat() * screenHeight * 0.3f
+                
+                // Также случайно изменяем размер облака
+                cloud.scale = 0.5f + Random.nextFloat() * 0.5f
             }
         }
     }
@@ -192,7 +207,8 @@ class Background(
         val baseSize: Float,
         val width: Float,
         val speed: Float,
-        var bubbles: List<CloudBubble>
+        var bubbles: List<CloudBubble>,
+        var scale: Float
     )
     
     /**

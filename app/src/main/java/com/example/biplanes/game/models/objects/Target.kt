@@ -47,9 +47,16 @@ class Target(
     fun draw(canvas: Canvas, paint: Paint) {
         if (isDestroyed) return
         
+        // Сохраняем оригинальные настройки
+        val originalColor = paint.color
+        val originalStyle = paint.style
+        val originalStrokeWidth = paint.strokeWidth
+        val originalAlpha = paint.alpha
+        
         // Внешний круг (красный)
         paint.color = Color.RED
         paint.style = Paint.Style.FILL
+        paint.alpha = 255
         canvas.drawCircle(position.x, position.y, width / 2, paint)
         
         // Средний круг (белый)
@@ -79,6 +86,12 @@ class Target(
         paint.textSize = width * 0.8f / 2
         paint.textAlign = Paint.Align.CENTER
         canvas.drawText(health.toString(), position.x, position.y + width * 0.3f / 2, paint)
+        
+        // Восстанавливаем оригинальные настройки
+        paint.color = originalColor
+        paint.style = originalStyle
+        paint.strokeWidth = originalStrokeWidth
+        paint.alpha = originalAlpha
     }
     
     fun destroy() {
@@ -96,7 +109,8 @@ class Target(
          */
         fun createTargets(count: Int, screenWidth: Float, screenHeight: Float, groundHeight: Float): List<Target> {
             val targets = mutableListOf<Target>()
-            val targetWidth = screenWidth / 30f
+            // Увеличиваем размер мишени для лучшей видимости и игрового процесса
+            val targetWidth = screenWidth / 20f  // Было / 30f
             
             // Проверяем входные параметры
             if (count <= 0) {
@@ -104,7 +118,7 @@ class Target(
                 return targets
             }
             
-            Log.d("Target", "Создаем $count мишеней")
+            Log.d("Target", "Создаем $count мишеней с размером $targetWidth")
             
             // Вычисляем безопасную зону для размещения мишеней
             val safeMargin = targetWidth * 2
@@ -130,7 +144,7 @@ class Target(
                 val target = Target(Vector2D(x, y), targetWidth, targetWidth, Type.STATIC)
                 targets.add(target)
                 
-                Log.d("Target", "Создана мишень #${i+1} на позиции ($x, $y)")
+                Log.d("Target", "Создана мишень #${i+1} на позиции ($x, $y) с размером $targetWidth")
             }
             
             Log.d("Target", "Создано ${targets.size} мишеней")
@@ -139,16 +153,29 @@ class Target(
         
         /**
          * Проверяет столкновение пули с мишенью
-         * @param bullet пуля
-         * @param target мишень
-         * @return true, если произошло столкновение
          */
         fun checkCollision(bullet: Bullet, target: Target): Boolean {
-            if (bullet.isDestroyed || target.isDestroyed) return false
+            // Если мишень уже уничтожена, столкновения нет
+            if (target.isDestroyed) {
+                return false
+            }
             
-            // Простая проверка столкновения на основе расстояния
-            val distance = Vector2D.distance(bullet.position, target.position)
-            return distance < (bullet.radius + target.width / 2)
+            // Вычисляем расстояние между центрами объектов
+            val dx = target.position.x - bullet.position.x
+            val dy = target.position.y - bullet.position.y
+            val distance = Math.sqrt((dx * dx + dy * dy).toDouble()).toFloat()
+            
+            // Увеличиваем зону столкновения для легкого попадания
+            // Используем 120% от радиуса мишени для более легкого попадания
+            val collisionDistance = target.width / 2 * 1.2f + bullet.radius
+            
+            // Подробное логирование для отладки
+            if (distance < target.width) {
+                Log.d("Target", "Близкое взаимодействие пули и мишени: расстояние=$distance, порог=$collisionDistance")
+            }
+            
+            // Проверяем столкновение
+            return distance <= collisionDistance
         }
     }
 } 

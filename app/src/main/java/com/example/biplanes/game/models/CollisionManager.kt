@@ -126,11 +126,56 @@ class CollisionManager(
                     gameView.addExplosion(explosion)
                 }
             }
+            
+            // НОВОЕ: Проверяем столкновения пилотов с землей
+            // Получаем всех пилотов из GameView и проверяем их столкновение с землей
+            val pilots = gameView.getPilots()
+            for (pilot in pilots) {
+                checkPilotGroundCollision(pilot, groundHeight)
+            }
+            
         } catch (e: Exception) {
             Log.e(TAG, "Error in checkCollisions: ${e.message}")
         }
         
         return bulletsToRemove
+    }
+    
+    /**
+     * Проверяет столкновение пилота с землей
+     * @param pilot пилот
+     * @param groundHeight высота земли
+     */
+    fun checkPilotGroundCollision(pilot: com.example.biplanes.game.models.objects.Pilot, groundHeight: Float) {
+        try {
+            // Если пилот уже спасен, пропускаем проверку
+            if (pilot.isRescued) return
+            
+            // Синхронизируем groundLevel пилота с текущим groundHeight
+            // Это важно, чтобы все части программы использовали одно и то же значение
+            if (pilot.groundLevel != groundHeight) {
+                // Если значения отличаются, корректируем groundLevel пилота
+                Log.d(TAG, "Корректировка groundLevel пилота: было ${pilot.groundLevel}, стало $groundHeight")
+                pilot.groundLevel = groundHeight
+            }
+            
+            // Если пилот достиг земли или провалился ниже
+            if (pilot.position.y >= groundHeight - 5) {
+                // Вызываем обработку контакта с землей
+                pilot.onGroundContact(groundHeight)
+                
+                // Дополнительная гарантия, что пилот не провалится ниже земли
+                if (pilot.position.y > groundHeight) {
+                    pilot.position.y = groundHeight
+                    pilot.velocity.y = 0f
+                    Log.d(TAG, "FORCE FIX: Принудительная коррекция позиции пилота до уровня земли")
+                }
+                
+                Log.d(TAG, "Обнаружено столкновение пилота с землей: позиция=${pilot.position.x},${pilot.position.y}")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Ошибка при проверке столкновения пилота с землей: ${e.message}")
+        }
     }
     
     /**

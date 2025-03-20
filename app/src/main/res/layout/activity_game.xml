@@ -105,4 +105,16 @@
         </LinearLayout>
     </FrameLayout>
 
+    <!-- Кнопка сохранения логов -->
+    <ImageButton
+        android:id="@+id/saveLogsButton"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_gravity="bottom|end"
+        android:layout_margin="16dp"
+        android:background="@drawable/circle_button_background"
+        android:contentDescription="Сохранить логи"
+        android:src="@android:drawable/ic_menu_save"
+        android:alpha="0.7" />
+
 </androidx.constraintlayout.widget.ConstraintLayout> 
