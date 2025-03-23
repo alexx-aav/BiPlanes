@@ -37,14 +37,15 @@ class House(
     // Добавляем метод для установки дома на уровень земли
     fun setToGroundLevel(groundHeight: Float) {
         // Устанавливаем позицию дома так, чтобы он стоял на земле
-        position.y = groundHeight - height / 2f
+        // Опускаем дом ниже на 20% высоты, чтобы он был более глубоко погружен в землю
+        position.y = groundHeight + height * 0.2f
         
         // Обновляем прямоугольник дома
         rect.set(
             position.x - width / 2f,
-            position.y - height / 2f,
+            position.y - height,
             position.x + width / 2f,
-            position.y + height / 2f
+            position.y
         )
     }
 

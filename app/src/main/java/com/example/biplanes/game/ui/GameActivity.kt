@@ -264,7 +264,7 @@ class GameActivity : AppCompatActivity(), WiFiDirectService.WiFiDirectListener {
             val playerPlane = binding.gameView.getPlayerPlane()
             if (playerPlane != null) {
                 Log.d(TAG, "Вызываем катапультирование напрямую для самолета на позиции (${playerPlane.position.x}, ${playerPlane.position.y})")
-                binding.gameView.ejectPilotDirectly(playerPlane)
+                binding.gameView.ejectPilot(playerPlane)
             } else {
                 Log.e(TAG, "Не удалось получить самолет игрока для катапультирования")
             }

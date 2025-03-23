@@ -67,10 +67,6 @@ class Target(
         paint.color = Color.RED
         canvas.drawCircle(position.x, position.y, width * 0.4f / 2, paint)
         
-        // Центральная точка (черная)
-        paint.color = Color.BLACK
-        canvas.drawCircle(position.x, position.y, width * 0.1f / 2, paint)
-        
         // Если мишень была поражена, рисуем эффект попадания
         if (hitAnimationTime > 0) {
             paint.color = Color.YELLOW

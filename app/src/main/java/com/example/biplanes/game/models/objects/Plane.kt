@@ -44,12 +44,11 @@ class Plane(
     private val turnFactor = 0.12f                  // Уменьшенный коэффициент поворота (было 0.15f)
     
     // Добавляем новые константы для физики падения
-    private val fallGravity = Vector2D(0f, 0.015f)  // Увеличенная гравитация для падения
-    private val fallDragCoefficient = 0.003f        // Увеличенное сопротивление воздуха при падении
-    private val maxFallSpeed = 15.0f                // Максимальная скорость падения
-    private val rotationDamping = 0.98f             // Затухание вращения
-    private val targetFallAngle = 45f               // Целевой угол падения
-    private val angleChangeSpeed = 0.5f             // Скорость изменения угла к целевому
+    private val fallGravity = Vector2D(0f, 0.2f)
+    private val maxFallSpeed = 20f
+    private val rotationDamping = 0.995f            // Увеличиваем затухание вращения для большей стабильности
+    private val targetFallAngle = 30f               // Уменьшаем целевой угол падения для более плавного спуска
+    private val angleChangeSpeed = 0.2f             // Уменьшаем скорость изменения угла для более плавного падения
     
     private val TAG = "Plane"
     private val planePath = Path()
@@ -68,6 +67,9 @@ class Plane(
     // Добавляем переменные для управления физикой полета
     private var ignoreLift = false
     private var autopilotEnabled = true
+    
+    // Добавляем флаг для неуправляемого падения
+    private var isUncontrolled: Boolean = false
     
     init {
         Log.d(TAG, "Plane created at position (${position.x}, ${position.y}), width: $width, height: $height, color: $color")
@@ -103,17 +105,44 @@ class Plane(
     }
 
     /**
+     * Устанавливает флаг неуправляемого падения
+     * @param uncontrolled true если самолет должен стать неуправляемым
+     */
+    fun setUncontrolled(uncontrolled: Boolean) {
+        isUncontrolled = uncontrolled
+    }
+
+    /**
      * Катапультирует пилота из самолета
      */
     fun ejectPilot() {
         pilot = null
         hasPilot = false
-        // После катапультирования самолет продолжает движение по инерции
-        // Добавляем небольшое случайное вращение для реализма
+        
+        // После катапультирования самолет сразу начинает падать вниз,
+        // сохраняя горизонтальную инерцию
+        
+        // Если самолет летел вверх, немедленно разворачиваем его вниз
+        if (velocity.y < 0) {
+            // Обнуляем вертикальную скорость и сразу добавляем падение вниз
+            // Уменьшаем начальную скорость падения с 1.0f до 0.6f
+            velocity.y = 0.6f
+        } else {
+            // Если самолет уже летел вниз, увеличиваем скорость падения
+            // Уменьшаем добавляемую скорость падения с 1.0f до 0.4f
+            velocity.y += 0.4f
+        }
+        
+        // Добавляем небольшое начальное вращение
         rotationVelocity = (Random.nextFloat() - 0.5f) * 0.5f
-        // Снижаем тягу двигателя постепенно
-        engineThrottle = 0.3f
-        Log.d(TAG, "Пилот катапультировался, самолет продолжает движение по инерции")
+        
+        // Выключаем двигатель полностью
+        engineThrottle = 0f
+        
+        // Устанавливаем режим неконтролируемого падения
+        isUncontrolled = true
+        
+        Log.d(TAG, "Пилот катапультировался, самолет теряет управление и начинает падение")
     }
 
     /**
@@ -136,35 +165,28 @@ class Plane(
                 return
             }
             
-            // Если в самолете нет пилота, он должен падать
-            if (!hasPilot) {
-                // Сохраняем текущую горизонтальную скорость
-                val currentHorizontalSpeed = velocity.x
+            // Если в самолете нет пилота или он неуправляем, самолет должен падать реалистично
+            if (!hasPilot || isUncontrolled) {
+                // Увеличиваем скорость падения с каждым кадром (более сильное ускорение)
+                // Уменьшаем ускорение падения с 0.5f до 0.32f для более реалистичного падения
+                velocity.y += 0.32f * deltaTime * 60f
                 
-                // Применяем увеличенную гравитацию для падения
-                velocity.add(Vector2D(0f, fallGravity.y))
+                // Сохраняем горизонтальную инерцию, но постепенно замедляем
+                velocity.x *= (0.998f - 0.0005f * deltaTime * 60f)
                 
-                // Вычисляем текущую скорость
-                val currentSpeed = Math.sqrt((velocity.x * velocity.x + velocity.y * velocity.y).toDouble()).toFloat()
+                // Увеличиваем скорость вращения постепенно
+                rotationVelocity += (Random.nextFloat() - 0.5f) * 0.01f
                 
-                // Ограничиваем максимальную скорость падения
-                if (currentSpeed > maxFallSpeed) {
-                    velocity.multiply(maxFallSpeed / currentSpeed)
+                // Применяем вращение
+                rotation += rotationVelocity * deltaTime * 60f
+                
+                // Ограничиваем максимальную скорость падения, но делаем её достаточно высокой
+                // Уменьшаем максимальную скорость падения с 20f до 14f
+                if (velocity.y > 14f) {
+                    velocity.y = 14f
                 }
                 
-                // Постепенно замедляем горизонтальную скорость с учетом сопротивления воздуха
-                velocity.x *= (1f - fallDragCoefficient * deltaTime * 60f)
-                
-                // Плавно меняем угол самолета к целевому углу падения
-                val targetAngle = if (velocity.x > 0) targetFallAngle else -targetFallAngle
-                val angleDiff = targetAngle - rotation
-                rotation += angleDiff * angleChangeSpeed * deltaTime * 60f
-                
-                // Добавляем вращение с затуханием
-                rotation += rotationVelocity * deltaTime * 60f
-                rotationVelocity *= rotationDamping
-                
-                // Обновляем позицию
+                // Перемещаем самолет
                 position = position.add(Vector2D(velocity.x * deltaTime * 60f, velocity.y * deltaTime * 60f))
                 return
             }

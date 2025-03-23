@@ -347,43 +347,45 @@ class GameView @JvmOverloads constructor(
         try {
             Log.d(TAG, "Вызван метод ejectPilot для самолета на позиции (${plane.position.x}, ${plane.position.y})")
             
-            // Проверяем, что самолет не уничтожен и в нем есть пилот
+            // Проверяем, не уничтожен ли самолет и есть ли в нем пилот
             if (plane.isDestroyed || !plane.hasPilot) {
-                Log.d(TAG, "Невозможно катапультировать пилота: самолет уничтожен=${plane.isDestroyed}, есть пилот=${plane.hasPilot}")
+                Log.d(TAG, "Нельзя катапультировать пилота: самолет уничтожен=${plane.isDestroyed}, есть пилот=${plane.hasPilot}")
                 return
             }
             
-            // Получаем пилота из самолета
-            val pilot = plane.getPilotObject()
-            if (pilot == null) {
-                Log.e(TAG, "Ошибка: пилот равен null, хотя hasPilot=true")
-                return
-            }
+            // Получаем пилота из самолета (используем pilot или getPilotObject, что доступно)
+            val pilot = plane.pilot ?: plane.getPilotObject() ?: return
             
-            // Устанавливаем позицию пилота равной позиции самолета
-            pilot.position = Vector2D(plane.position.x, plane.position.y)
+            // Получаем текущую позицию самолета
+            val planePosition = plane.position.copy()
+
+            // Устанавливаем начальную позицию пилота точно в позицию самолета
+            val pilotX = planePosition.x + plane.width / 2
+            val pilotY = planePosition.y + plane.height / 2
+            
+            // Устанавливаем параметры окружения для пилота
+            pilot.screenWidth = width.toFloat()
+            pilot.screenHeight = height.toFloat()
+            pilot.groundLevel = groundHeight
             
             // Устанавливаем начальную скорость пилота
             pilot.velocity = Vector2D(plane.velocity.x * 0.5f, plane.velocity.y * 0.5f)
             
-            // Катапультируем пилота
-            pilot.eject()
-            
-            // Удаляем пилота из самолета
-            plane.ejectPilot()
+            // Удаляем пилота из самолета - это активирует внутреннюю логику падения в классе Plane
+            plane.ejectPilot() // Это изменит физику самолета внутри класса Plane
             
             // Добавляем пилота в список пилотов
             pilots.add(pilot)
-            
-            // Устанавливаем флаг отсутствия пилота в самолете
-            plane.hasPilot = false
             
             // Устанавливаем ссылку на дом, если еще не установлена
             if (pilot.house == null && house != null) {
                 pilot.assignHouse(house!!)
             }
             
-            Log.d(TAG, "Пилот успешно катапультирован на позиции (${pilot.position.x}, ${pilot.position.y})")
+            // Катапультируем пилота с правильной позицией
+            pilot.eject(pilotX, pilotY)
+            
+            Log.d(TAG, "Пилот катапультирован на позиции (${pilotX}, ${pilotY})")
         } catch (e: Exception) {
             Log.e(TAG, "Ошибка при катапультировании пилота: ${e.message}")
             e.printStackTrace()
@@ -497,19 +499,6 @@ class GameView @JvmOverloads constructor(
                 try {
                     // Обновляем самолет
                     updatePlane(plane, deltaTime)
-                    
-                    // Проверяем, есть ли пилот в самолете
-                    if (plane.getPilotObject() == null && !plane.isDestroyed) {
-                        // Если пилот катапультировался, самолет должен падать
-                        // Добавляем гравитацию к скорости самолета
-                        plane.velocity.y += 0.2f
-                        
-                        // Добавляем случайное вращение для эффекта падения
-                        plane.rotation += (Random.nextFloat() - 0.5f) * 5f
-                        
-                        // Постепенно замедляем горизонтальную скорость
-                        plane.velocity.x *= 0.99f
-                    }
                     
                     // Проверяем, не вышел ли самолет за пределы экрана
                     if (!plane.isDestroyed) {
@@ -864,8 +853,8 @@ class GameView @JvmOverloads constructor(
             if (gameType == GameType.TRAINING && (planes.isEmpty() || !planes.any { it.isPlayer })) {
                 Log.d(TAG, "Самолёт игрока отсутствует, проверяем возможность респауна")
                 
-                // Если все пилоты погибли (нет активных пилотов), создаем новый самолет
-                if (pilots.isEmpty() || !pilots.any { !it.isRescued }) {
+                // Если все пилоты погибли (нет активных пилотов) И размеры экрана установлены, создаем новый самолет
+                if ((pilots.isEmpty() || !pilots.any { !it.isRescued }) && width > 0 && height > 0 && planes.isEmpty()) {
                     createNewPlayerPlane()
                     
                     // Сбрасываем флаг окончания игры, если он был установлен
@@ -884,13 +873,19 @@ class GameView @JvmOverloads constructor(
         try {
             Log.d(TAG, "Создание нового самолёта игрока")
             
+            // Проверяем, что размеры экрана установлены
+            if (width == 0 || height == 0) {
+                Log.d(TAG, "Размеры экрана не установлены, откладываем создание самолета")
+                return
+            }
+            
             // Создаем новый самолет игрока
             val screenWidth = width.toFloat()
             val screenHeight = height.toFloat()
             
-            // Создаем самолет на более подходящей высоте
+            // Создаем самолет на безопасной высоте
             val playerPlane = Plane(
-                position = Vector2D(screenWidth / 2, screenHeight * 0.4f),
+                position = Vector2D(screenWidth / 2, screenHeight * 0.3f),
                 width = planeWidth,
                 height = planeHeight,
                 color = planeColorToUse,
@@ -899,14 +894,14 @@ class GameView @JvmOverloads constructor(
             )
             
             // Устанавливаем начальную скорость для стабильного полета
-            playerPlane.velocity = Vector2D(8.0f, -1.0f)
+            playerPlane.velocity = Vector2D(10.0f, -2.0f)
             
             // Устанавливаем режим тренировки для самолета
             if (gameType == GameType.TRAINING) {
                 playerPlane.setTrainingMode(true)
             }
             
-            // Создаем пилота с цветом самолета
+            // Создаем пилота с тем же цветом, что и самолет
             val pilot = Pilot(planeColorToUse, planeWidth / 4)
             playerPlane.assignPilot(pilot)
             
@@ -998,50 +993,36 @@ class GameView @JvmOverloads constructor(
     override fun surfaceCreated(holder: SurfaceHolder) {
         Log.d(TAG, "surfaceCreated called, width=$width, height=$height")
         
-        try {
-            // Инициализируем фон при создании поверхности
-            if (background == null) {
-                Log.d(TAG, "Инициализация фона в surfaceCreated, width=$width, height=$height")
-                background = Background(width.toFloat(), height.toFloat())
-                groundHeight = background?.getGroundHeight() ?: (height * 0.85f)
-                Log.d(TAG, "Фон инициализирован, groundHeight=$groundHeight")
-            }
-            
-            // Если есть отложенная инициализация, выполняем ее
-            if (pendingInitGame && pendingGameType != null && pendingPlaneColor != null) {
-                Log.d(TAG, "Выполняем отложенную инициализацию")
-                initialize(pendingGameType!!, pendingIsHost, pendingPlaneColor!!)
-                pendingInitGame = false
-            }
-            
-            // Сбрасываем флаг окончания игры
-            isGameOver = false
-            
-            // Запускаем игровой поток
-            if (gameThread == null || !isRunning) {
-                isRunning = true
-                gameThread = Thread {
-                    while (isRunning) {
-                        update()
-                        try {
-                            holder.lockCanvas()?.let { canvas ->
-                                draw(canvas)
-                                holder.unlockCanvasAndPost(canvas)
-                            }
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Error in game loop: ${e.message}")
+        // Инициализируем фон
+        initBackground()
+        
+        // Запускаем игровой поток
+        if (!isRunning) {
+            isRunning = true
+            gameThread = Thread {
+                while (isRunning) {
+                    update()
+                    try {
+                        holder.lockCanvas()?.let { canvas ->
+                            draw(canvas)
+                            holder.unlockCanvasAndPost(canvas)
                         }
-                        Thread.sleep(16) // ~60 FPS
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error in game loop: ${e.message}")
                     }
+                    Thread.sleep(16) // ~60 FPS
                 }
-                gameThread?.start()
-                Log.d(TAG, "Игровой поток запущен")
-            } else {
-                Log.d(TAG, "Игровой поток уже запущен")
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Ошибка в surfaceCreated: ${e.message}")
-            e.printStackTrace()
+            gameThread?.start()
+            Log.d(TAG, "Игровой поток запущен")
+        } else {
+            Log.d(TAG, "Игровой поток уже запущен")
+        }
+        
+        // Избегаем дублирования самолетов
+        // Создадим самолет игрока только если список пуст
+        if (width > 0 && height > 0 && planes.isEmpty()) {
+            createNewPlayerPlane()
         }
     }
     
@@ -1175,60 +1156,6 @@ class GameView @JvmOverloads constructor(
      */
     fun getPlayerPlane(): Plane? {
         return if (planes.isNotEmpty()) planes[0] else null
-    }
-    
-    /**
-     * Метод для прямого вызова катапультирования пилота из GameActivity
-     */
-    fun ejectPilotDirectly(plane: Plane) {
-        try {
-            // Проверяем, не уничтожен ли самолет и есть ли в нем пилот
-            if (plane.isDestroyed || !plane.hasPilot) {
-                Log.d(TAG, "Нельзя катапультировать пилота: самолет уничтожен или пилот уже катапультирован")
-                return
-            }
-
-            // Получаем пилота
-            val pilot = plane.pilot ?: return
-            
-            // Получаем текущую позицию самолета
-            val planePosition = plane.position.copy()
-
-            // Устанавливаем начальную позицию пилота точно в позицию самолета
-            val pilotX = planePosition.x + plane.width / 2
-            val pilotY = planePosition.y + plane.height / 2
-
-            // Устанавливаем параметры окружения для пилота
-            pilot.screenWidth = width.toFloat()
-            pilot.screenHeight = height.toFloat()
-            pilot.groundLevel = groundHeight
-            
-            // Отмечаем, что пилот катапультирован
-            plane.hasPilot = false
-
-            // Добавляем пилота в список активных пилотов
-            pilots.add(pilot)
-
-            // Устанавливаем ссылку на дом для пилота
-            house?.let { safeHouse ->
-                pilot.assignHouse(safeHouse)
-            }
-            
-            // Теперь катапультируем пилота с правильной позицией
-            pilot.eject(pilotX, pilotY)
-
-            // ВАЖНО: Принудительно устанавливаем отрицательную вертикальную скорость для падения
-            // независимо от текущего направления самолета
-            plane.velocity.y = 5.0f  // Начальная скорость падения
-            plane.velocity.x *= 0.5f // Уменьшаем горизонтальную скорость
-
-            // Устанавливаем угол самолета вниз для реалистичного падения
-            plane.rotation = 45f
-
-            Log.d(TAG, "Пилот катапультирован из самолета: позиция=${pilotX},${pilotY}")
-        } catch (e: Exception) {
-            Log.e(TAG, "Ошибка при катапультировании пилота: ${e.message}")
-        }
     }
     
     /**
@@ -1520,6 +1447,38 @@ class GameView @JvmOverloads constructor(
             house?.draw(canvas, paint)
         } finally {
             holder.unlockCanvasAndPost(canvas)
+        }
+    }
+
+    private fun initBackground() {
+        try {
+            // Инициализируем фон при создании поверхности
+            if (background == null) {
+                Log.d(TAG, "Инициализация фона в surfaceCreated, width=$width, height=$height")
+                background = Background(width.toFloat(), height.toFloat())
+                groundHeight = background?.getGroundHeight() ?: (height * 0.85f)
+                Log.d(TAG, "Фон инициализирован, groundHeight=$groundHeight")
+                
+                // Создаем дом на земле
+                if (house == null) {
+                    house = House(PointF(width * 0.8f, groundHeight))
+                    house?.setToGroundLevel(groundHeight)
+                    Log.d(TAG, "Дом создан на позиции (${width * 0.8f}, $groundHeight)")
+                }
+            }
+            
+            // Если есть отложенная инициализация, выполняем ее
+            if (pendingInitGame && pendingGameType != null && pendingPlaneColor != null) {
+                Log.d(TAG, "Выполняем отложенную инициализацию")
+                initialize(pendingGameType!!, pendingIsHost, pendingPlaneColor!!)
+                pendingInitGame = false
+            }
+            
+            // Сбрасываем флаг окончания игры
+            isGameOver = false
+        } catch (e: Exception) {
+            Log.e(TAG, "Ошибка при инициализации фона: ${e.message}")
+            e.printStackTrace()
         }
     }
 } 
