@@ -148,6 +148,30 @@ class Target(
         }
         
         /**
+         * Обновляет состояние всех мишеней и возвращает список уничтоженных
+         * @param targets Список мишеней для обновления
+         * @return Список уничтоженных мишеней, которые нужно удалить
+         */
+        fun updateTargets(targets: List<Target>): List<Target> {
+            val destroyedTargets = mutableListOf<Target>()
+            
+            try {
+                // Обновляем каждую мишень и проверяем, не уничтожена ли она
+                for (target in targets) {
+                    target.update()
+                    if (target.isDestroyed) {
+                        destroyedTargets.add(target)
+                        Log.d("Target", "Мишень уничтожена на позиции (${target.position.x}, ${target.position.y})")
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("Target", "Ошибка при обновлении мишеней: ${e.message}")
+            }
+            
+            return destroyedTargets
+        }
+        
+        /**
          * Проверяет столкновение пули с мишенью
          */
         fun checkCollision(bullet: Bullet, target: Target): Boolean {

@@ -4,15 +4,13 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.drawable.GradientDrawable
-import android.graphics.drawable.ShapeDrawable
-import android.graphics.drawable.shapes.OvalShape
-import android.net.wifi.p2p.WifiP2pDevice
+import android.graphics.Typeface
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.text.style.StyleSpan
 import android.util.Log
+import android.view.LayoutInflater
 import android.view.View
 import android.widget.Button
 import android.widget.TextView
@@ -28,11 +26,11 @@ import com.example.biplanes.game.models.GameType
 import com.example.biplanes.game.models.PlaneColor
 import com.example.biplanes.game.models.Player
 import com.example.biplanes.network.GameMessage
-import com.example.biplanes.network.WiFiDirectService
+import com.example.biplanes.network.NetworkService
+import com.example.biplanes.network.NetworkService.ServiceMode
 import java.util.UUID
-import android.graphics.Typeface
 
-class LobbyActivity : AppCompatActivity(), WiFiDirectService.WiFiDirectListener {
+class LobbyActivity : AppCompatActivity(), NetworkService.NetworkListener {
     
     companion object {
         private const val TAG = "LobbyActivity"
@@ -57,11 +55,14 @@ class LobbyActivity : AppCompatActivity(), WiFiDirectService.WiFiDirectListener 
     private var roomCode = ""
     private var playerId = ""
     
-    // Сервис Wi-Fi Direct
-    private lateinit var wifiDirectService: WiFiDirectService
+    // Сетевой сервис для работы с локальной сетью
+    private lateinit var networkService: NetworkService
     
-    // Список обнаруженных устройств
-    private val discoveredDevices = mutableListOf<WifiP2pDevice>()
+    // Список обнаруженных серверов
+    private val discoveredServers = mutableListOf<NetworkService.ServerInfo>()
+    
+    // Диалоги
+    private var serverListDialog: AlertDialog? = null
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -104,8 +105,8 @@ class LobbyActivity : AppCompatActivity(), WiFiDirectService.WiFiDirectListener 
         // Обновляем UI
         updateUI()
         
-        // Инициализируем Wi-Fi Direct
-        initWiFiDirect()
+        // Инициализируем сетевой сервис
+        initNetworkService()
     }
     
     private fun initViews() {
@@ -186,16 +187,8 @@ class LobbyActivity : AppCompatActivity(), WiFiDirectService.WiFiDirectListener 
             .map { allowedChars.random() }
             .joinToString("")
         
-        // Логируем код комнаты для отладки
         Log.d(TAG, "Generated room code: $roomCode")
-        
-        // Обновляем UI с новым кодом комнаты
-        runOnUiThread {
-            updateUI()
-            
-            // Не показываем диалог автоматически при открытии
-            // showRoomCodeDialog()
-        }
+        updateUI()
     }
     
     private fun showRoomCodeDialog() {
@@ -273,29 +266,28 @@ class LobbyActivity : AppCompatActivity(), WiFiDirectService.WiFiDirectListener 
         }
     }
     
-    private fun initWiFiDirect() {
+    private fun initNetworkService() {
         // Проверяем разрешения
         if (checkAndRequestPermissions()) {
-            // Инициализируем сервис Wi-Fi Direct
-            wifiDirectService = WiFiDirectService(this)
-            wifiDirectService.setListener(this)
-            wifiDirectService.start()
+            // Инициализируем сетевой сервис
+            networkService = NetworkService(this)
+            networkService.setListener(this)
+            networkService.start()
             
-            // Добавляем задержку перед началом обнаружения устройств
+            // Добавляем задержку перед началом работы с сетью
             Handler(Looper.getMainLooper()).postDelayed({
-                // Если хост, начинаем обнаружение устройств
                 if (isHost) {
-                    wifiDirectService.discoverPeers()
+                    // Если хост, создаем сервер лобби с кодом комнаты
+                    networkService.createLobbyServer(roomCode)
                     
-                    // Показываем сообщение о том, что ищем устройства
                     Toast.makeText(
                         this,
-                        "Поиск устройств...",
+                        "Лобби создано. Ожидание подключений...",
                         Toast.LENGTH_SHORT
                     ).show()
                 } else {
-                    // Если не хост, показываем диалог выбора устройства для подключения
-                    showDeviceListDialog()
+                    // Если не хост, показываем диалог выбора сервера
+                    showServerListDialog()
                 }
             }, 1000) // Задержка 1 секунда
         }
@@ -304,13 +296,7 @@ class LobbyActivity : AppCompatActivity(), WiFiDirectService.WiFiDirectListener 
     private fun checkAndRequestPermissions(): Boolean {
         val permissions = mutableListOf<String>()
         
-        // Проверяем разрешения для Wi-Fi Direct
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) 
-            != PackageManager.PERMISSION_GRANTED) {
-            permissions.add(Manifest.permission.ACCESS_FINE_LOCATION)
-        }
-        
-        // Для Android 10+ нужно разрешение ACCESS_FINE_LOCATION
+        // Для Android 10+ нужно разрешение ACCESS_FINE_LOCATION для сетевых операций
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && 
             ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) 
             != PackageManager.PERMISSION_GRANTED) {
@@ -339,8 +325,8 @@ class LobbyActivity : AppCompatActivity(), WiFiDirectService.WiFiDirectListener 
         
         if (requestCode == REQUEST_PERMISSIONS) {
             if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
-                // Все разрешения предоставлены, инициализируем Wi-Fi Direct
-                initWiFiDirect()
+                // Все разрешения предоставлены, инициализируем сетевой сервис
+                initNetworkService()
             } else {
                 // Разрешения не предоставлены, показываем сообщение
                 Toast.makeText(
@@ -353,47 +339,88 @@ class LobbyActivity : AppCompatActivity(), WiFiDirectService.WiFiDirectListener 
         }
     }
     
-    private fun showDeviceListDialog() {
-        // Показываем диалог выбора устройства для подключения
-        val builder = AlertDialog.Builder(this)
-        builder.setTitle("Выберите устройство для подключения")
-        
-        if (discoveredDevices.isEmpty()) {
-            builder.setMessage("Устройства не найдены. Нажмите 'Обновить' для повторного поиска.")
-            builder.setPositiveButton("Обновить") { _, _ ->
-                // Показываем сообщение о том, что ищем устройства
-                Toast.makeText(
-                    this,
-                    "Поиск устройств...",
-                    Toast.LENGTH_SHORT
-                ).show()
-                
-                wifiDirectService.discoverPeers()
-                
-                // Повторно показываем диалог через 3 секунды
-                Handler(Looper.getMainLooper()).postDelayed({
-                    showDeviceListDialog()
-                }, 3000)
-            }
-        } else {
-            val deviceNames = discoveredDevices.map { it.deviceName }.toTypedArray()
-            builder.setItems(deviceNames) { _, which ->
-                // Подключаемся к выбранному устройству
-                Toast.makeText(
-                    this,
-                    "Подключение к ${deviceNames[which]}...",
-                    Toast.LENGTH_SHORT
-                ).show()
-                
-                wifiDirectService.connect(discoveredDevices[which])
-            }
+    private fun showServerListDialog() {
+        // Проверяем, не уничтожена ли активность перед показом диалога
+        if (isFinishing || isDestroyed) {
+            Log.d(TAG, "Активность завершена, отмена показа диалога")
+            return
         }
         
-        builder.setNegativeButton("Отмена") { _, _ ->
+        // Создаем диалог выбора сервера
+        val builder = AlertDialog.Builder(this)
+        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_server_list, null)
+        
+        val titleTextView = dialogView.findViewById<TextView>(R.id.titleTextView)
+        val serversRecyclerView = dialogView.findViewById<RecyclerView>(R.id.serversRecyclerView)
+        val emptyTextView = dialogView.findViewById<TextView>(R.id.emptyTextView)
+        val refreshButton = dialogView.findViewById<Button>(R.id.refreshButton)
+        val cancelButton = dialogView.findViewById<Button>(R.id.cancelButton)
+        
+        // Настраиваем RecyclerView
+        val serverAdapter = ServerAdapter(discoveredServers) { serverInfo ->
+            // Обработка нажатия на сервер
+            serverListDialog?.dismiss()
+            connectToServer(serverInfo)
+        }
+        
+        serversRecyclerView.apply {
+            layoutManager = LinearLayoutManager(this@LobbyActivity)
+            adapter = serverAdapter
+        }
+        
+        // Настраиваем кнопки
+        refreshButton.setOnClickListener {
+            // Обновляем список серверов
+            discoveredServers.clear()
+            serverAdapter.notifyDataSetChanged()
+            emptyTextView.visibility = View.VISIBLE
+            
+            networkService.stopDiscovery()
+            networkService.discoverServers()
+            
+            Toast.makeText(
+                this,
+                "Поиск серверов...",
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+        
+        cancelButton.setOnClickListener {
+            serverListDialog?.dismiss()
             finish()
         }
         
-        builder.show()
+        // Обновляем видимость элементов
+        emptyTextView.visibility = if (discoveredServers.isEmpty()) View.VISIBLE else View.GONE
+        
+        builder.setView(dialogView)
+        builder.setCancelable(false)
+        
+        try {
+            serverListDialog = builder.create()
+            serverListDialog?.show()
+            
+            // Начинаем поиск серверов
+            networkService.discoverServers()
+            
+            Toast.makeText(
+                this,
+                "Поиск серверов...",
+                Toast.LENGTH_SHORT
+            ).show()
+        } catch (e: Exception) {
+            Log.e(TAG, "Ошибка при показе диалога: ${e.message}", e)
+        }
+    }
+    
+    private fun connectToServer(serverInfo: NetworkService.ServerInfo) {
+        Toast.makeText(
+            this,
+            "Подключение к серверу ${serverInfo.name}...",
+            Toast.LENGTH_SHORT
+        ).show()
+        
+        networkService.connectToServer(serverInfo)
     }
     
     private fun startGame() {
@@ -402,198 +429,305 @@ class LobbyActivity : AppCompatActivity(), WiFiDirectService.WiFiDirectListener 
             gameType = gameType,
             players = players
         )
-        wifiDirectService.sendMessage(startGameMessage)
+        networkService.sendMessage(startGameMessage)
         
         // Запускаем игру
         startGameActivity()
     }
     
     private fun startGameActivity() {
-        val intent = Intent(this, GameActivity::class.java)
-        intent.putExtra("gameType", gameType)
-        intent.putExtra("isHost", isHost)
-        intent.putExtra("planeColor", selectedColor)
-        intent.putExtra("playerId", playerId)
-        intent.putExtra("players", ArrayList(players))
-        startActivity(intent)
-        finish()
-    }
-    
-    // Реализация методов интерфейса WiFiDirectListener
-    
-    override fun onDeviceDiscovered(device: WifiP2pDevice) {
-        Log.d(TAG, "Device discovered: ${device.deviceName}")
+        Log.d(TAG, "Подготовка к запуску GameActivity...")
         
-        // Добавляем устройство в список
-        if (!discoveredDevices.contains(device)) {
-            discoveredDevices.add(device)
+        try {
+            // Подготавливаем NetworkService к переходу
+            networkService.prepareTransferToNextActivity()
             
-            // Если не хост, обновляем диалог выбора устройства
-            if (!isHost) {
-                showDeviceListDialog()
+            // Создаем Intent для запуска GameActivity
+            val intent = Intent(this, GameActivity::class.java).apply {
+                putExtra("gameType", gameType)
+                putExtra("isHost", isHost)
+                putExtra("planeColor", players.find { it.id == playerId }?.color ?: PlaneColor.RED)
+                putExtra("playerId", playerId)
+                putExtra("players", ArrayList(players))
             }
+            
+            // Запускаем Activity
+            startActivity(intent)
+            Log.d(TAG, "GameActivity запущена")
+        } catch (e: Exception) {
+            Log.e(TAG, "Ошибка при запуске GameActivity: ${e.message}", e)
+            Toast.makeText(
+                this,
+                "Ошибка при запуске игры: ${e.message}",
+                Toast.LENGTH_LONG
+            ).show()
         }
     }
     
-    override fun onConnectionChanged(isConnected: Boolean, groupOwnerAddress: String?) {
-        Log.d(TAG, "Connection changed: $isConnected, address: $groupOwnerAddress")
+    // Реализация методов интерфейса NetworkListener
+    
+    override fun onServerDiscovered(serverInfo: NetworkService.ServerInfo) {
+        Log.d(TAG, "Обнаружен сервер: ${serverInfo.name}")
         
-        if (isConnected) {
-            // Если подключение установлено
+        // Интересуют только серверы лобби
+        if (serverInfo.name.startsWith(NetworkService.LOBBY_PREFIX)) {
             runOnUiThread {
-                Toast.makeText(
-                    this,
-                    "Подключение установлено",
-                    Toast.LENGTH_SHORT
-                ).show()
+                // Проверяем наличие этого сервера в списке
+                val serverExists = discoveredServers.any { it.id == serverInfo.id }
                 
-                // Добавляем задержку перед отправкой сообщений
-                Handler(Looper.getMainLooper()).postDelayed({
-                    if (isHost) {
-                        // Если хост, отправляем информацию о лобби
-                        val currentPlayer = players.first()
-                        val joinMessage = GameMessage.JoinLobby(
-                            player = currentPlayer,
-                            gameType = gameType
-                        )
-                        wifiDirectService.sendMessage(joinMessage)
-                    } else {
-                        // Если не хост, отправляем запрос на присоединение
-                        val currentPlayer = players.first()
-                        val joinMessage = GameMessage.JoinLobby(
-                            player = currentPlayer,
-                            gameType = gameType
-                        )
-                        wifiDirectService.sendMessage(joinMessage)
+                if (!serverExists) {
+                    // Если сервер новый, добавляем его
+                    discoveredServers.add(serverInfo)
+                    
+                    // Обновляем UI
+                    serverListDialog?.let { dialog ->
+                        val recyclerView = dialog.findViewById<RecyclerView>(R.id.serversRecyclerView)
+                        val emptyTextView = dialog.findViewById<TextView>(R.id.emptyTextView)
+                        
+                        recyclerView?.adapter?.notifyItemInserted(discoveredServers.size - 1)
+                        emptyTextView?.visibility = if (discoveredServers.isEmpty()) View.VISIBLE else View.GONE
                     }
-                }, 1000) // Задержка 1 секунда
-            }
-        } else {
-            // Если подключение разорвано
-            runOnUiThread {
-                Toast.makeText(
-                    this,
-                    "Подключение разорвано. Повторная попытка...",
-                    Toast.LENGTH_SHORT
-                ).show()
-                
-                // Удаляем всех игроков, кроме текущего
-                val currentPlayer = players.first()
-                players.clear()
-                players.add(currentPlayer)
-                playerAdapter.notifyDataSetChanged()
-                
-                // Обновляем UI
-                updateUI()
-                
-                // Если не хост, пытаемся переподключиться
-                if (!isHost) {
-                    Handler(Looper.getMainLooper()).postDelayed({
-                        showDeviceListDialog()
-                    }, 2000) // Задержка 2 секунды
-                } else {
-                    // Если хост, начинаем обнаружение устройств заново
-                    Handler(Looper.getMainLooper()).postDelayed({
-                        wifiDirectService.discoverPeers()
-                    }, 2000) // Задержка 2 секунды
+                    
+                    // Если клиент и есть roomCode, проверяем соответствие
+                    if (!isHost && roomCode.isNotEmpty()) {
+                        if (serverInfo.name == "${NetworkService.LOBBY_PREFIX}$roomCode") {
+                            // Найден искомый сервер, подключаемся автоматически
+                            Log.d(TAG, "Найден сервер с нужным кодом комнаты: $roomCode")
+                            serverListDialog?.dismiss()
+                            connectToServer(serverInfo)
+                        }
+                    }
                 }
             }
         }
     }
     
-    override fun onDeviceDisconnected() {
-        Log.d(TAG, "Device disconnected")
+    private fun sendLobbyData() {
+        try {
+            if (isHost) {
+                // Если мы хост, отправляем данные о всех игроках всем клиентам
+                players.forEach { player ->
+                    val joinMessage = GameMessage.JoinLobby(player = player, gameType = gameType)
+                    networkService.sendMessage(joinMessage)
+                    Log.d(TAG, "Хост отправил информацию о игроке: ID=${player.id}, Name=${player.name}")
+                }
+                
+                // Также отправляем тип игры
+                val gameTypeMessage = GameMessage.UpdateGameType(gameType = gameType)
+                networkService.sendMessage(gameTypeMessage)
+                Log.d(TAG, "Хост отправил тип игры: $gameType")
+            } else {
+                // Если мы клиент, отправляем только данные о себе
+                val currentPlayer = players.first() // Мы всегда первый в своем списке
+                val joinMessage = GameMessage.JoinLobby(player = currentPlayer, gameType = gameType)
+                networkService.sendMessage(joinMessage)
+                Log.d(TAG, "Клиент отправил информацию о себе: ID=${currentPlayer.id}, Name=${currentPlayer.name}")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Ошибка при отправке данных лобби: ${e.message}", e)
+        }
+    }
+    
+    override fun onClientConnected(clientId: String) {
+        Log.d(TAG, "Клиент подключился: $clientId")
         
-        runOnUiThread {
-            Toast.makeText(
-                this,
-                "Устройство отключено",
-                Toast.LENGTH_SHORT
-            ).show()
-            
-            // Удаляем всех игроков, кроме текущего
-            val currentPlayer = players.first()
-            players.clear()
-            players.add(currentPlayer)
-            playerAdapter.notifyDataSetChanged()
-            
-            // Обновляем UI
-            updateUI()
+        // Если мы хост, отправляем информацию о лобби
+        if (isHost) {
+            runOnUiThread {
+                Toast.makeText(this, "Клиент подключился", Toast.LENGTH_SHORT).show()
+                
+                // Не создаем игрока здесь, ждем информацию от клиента
+                Log.d(TAG, "Ожидаем информацию о игроке от клиента: $clientId")
+                
+                // Отправляем информацию о лобби новому клиенту
+                // Используем небольшую задержку для надежности
+                Handler(Looper.getMainLooper()).postDelayed({
+                    sendLobbyData()
+                }, 300)
+            }
+        }
+    }
+    
+    override fun onClientDisconnected(clientId: String) {
+        Log.d(TAG, "Клиент отключился: $clientId")
+        
+        // Удаляем игрока из списка
+        val playerIndex = players.indexOfFirst { it.id == clientId }
+        if (playerIndex != -1) {
+            runOnUiThread {
+                players.removeAt(playerIndex)
+                playerAdapter.notifyItemRemoved(playerIndex)
+                
+                // Обновляем UI
+                updateUI()
+            }
         }
     }
     
     override fun onMessageReceived(message: Any) {
-        Log.d(TAG, "Message received: $message")
+        Log.d(TAG, "Получено сообщение: ${message.javaClass.simpleName}, Содержимое: $message")
         
-        if (message is GameMessage) {
-            when (message) {
-                is GameMessage.JoinLobby -> {
-                    // Получено сообщение о присоединении игрока
-                    val player = message.player
+        // Обрабатываем разные типы сообщений
+        when (message) {
+            is GameMessage.JoinLobby -> {
+                // Получено сообщение о присоединении игрока
+                val player = message.player
+                Log.d(TAG, "Обрабатываем JoinLobby для игрока: ID=${player.id}, Name=${player.name}, Color=${player.color}, IsHost=${player.isHost}")
+                
+                runOnUiThread {
+                    // Проверяем, есть ли уже такой игрок
+                    val existingPlayerIndex = players.indexOfFirst { it.id == player.id }
                     
-                    runOnUiThread {
-                        // Проверяем, есть ли уже такой игрок
-                        if (players.none { it.id == player.id }) {
-                            players.add(player)
-                            playerAdapter.notifyItemInserted(players.size - 1)
-                            
-                            // Обновляем UI
-                            updateUI()
-                            
-                            // Если хост, отправляем информацию о всех игроках
-                            if (isHost) {
-                                for (p in players) {
-                                    val joinMessage = GameMessage.JoinLobby(
-                                        player = p,
-                                        gameType = gameType
-                                    )
-                                    wifiDirectService.sendMessage(joinMessage)
-                                }
-                            }
-                        }
+                    if (existingPlayerIndex == -1) {
+                        // Если игрока нет в списке, добавляем его
+                        Log.d(TAG, "Добавляем нового игрока: $player")
+                        players.add(player)
+                        playerAdapter.notifyItemInserted(players.size - 1)
+                        
+                        // Показываем Toast для отладки
+                        Toast.makeText(this, 
+                            "Добавлен игрок: ${player.name}", 
+                            Toast.LENGTH_SHORT).show()
+                    } else {
+                        // Если игрок уже в списке, обновляем его данные
+                        Log.d(TAG, "Обновляем данные игрока: $player")
+                        players[existingPlayerIndex] = player
+                        playerAdapter.notifyItemChanged(existingPlayerIndex)
                     }
-                }
-                
-                is GameMessage.PlayerReady -> {
-                    // Получено сообщение о готовности игрока
-                    val playerId = message.playerId
-                    val isReady = message.isReady
                     
-                    runOnUiThread {
-                        // Обновляем статус игрока
-                        val playerIndex = players.indexOfFirst { it.id == playerId }
-                        if (playerIndex != -1) {
-                            val player = players[playerIndex]
-                            players[playerIndex] = player.copy(isReady = isReady)
-                            playerAdapter.notifyItemChanged(playerIndex)
-                            
-                            // Обновляем UI
-                            updateUI()
-                        }
+                    // Выводим текущий список игроков
+                    Log.d(TAG, "Текущий список игроков (${players.size}):")
+                    players.forEachIndexed { index, p ->
+                        Log.d(TAG, "[$index] ID=${p.id}, Name=${p.name}, Color=${p.color}, IsHost=${p.isHost}")
                     }
-                }
-                
-                is GameMessage.StartGame -> {
-                    // Получено сообщение о начале игры
-                    runOnUiThread {
-                        // Запускаем игру
-                        startGameActivity()
-                    }
-                }
-                
-                else -> {
-                    // Игнорируем другие типы сообщений
+                    
+                    // Обновляем UI
+                    updateUI()
                 }
             }
+            
+            is GameMessage.UpdateGameType -> {
+                // Получено сообщение об обновлении типа игры
+                val updatedGameType = message.gameType
+                Log.d(TAG, "Обрабатываем UpdateGameType: $updatedGameType")
+                
+                runOnUiThread {
+                    // Обновляем тип игры
+                    gameType = updatedGameType
+                    
+                    // Обновляем заголовок
+                    val gameTypeShortText = when (gameType) {
+                        GameType.ONE_VS_ONE -> "1 на 1"
+                        GameType.TWO_VS_TWO -> "2 на 2"
+                        GameType.FREE_FOR_ALL -> "Каждый за себя"
+                        GameType.TRAINING -> "Тренировка"
+                    }
+                    lobbyTitleTextView.text = if (isHost) 
+                        "Ваша игра ($gameTypeShortText)" 
+                    else 
+                        "Подключение к игре ($gameTypeShortText)"
+                    
+                    // Обновляем UI
+                    updateUI()
+                    
+                    // Показываем Toast для отладки
+                    Toast.makeText(this, 
+                        "Получен тип игры: $gameTypeShortText", 
+                        Toast.LENGTH_SHORT).show()
+                }
+            }
+            
+            is GameMessage.PlayerReady -> {
+                // Обновляем статус готовности игрока
+                val playerId = message.playerId
+                val isReady = message.isReady
+                Log.d(TAG, "Обрабатываем PlayerReady: ID=$playerId, IsReady=$isReady")
+                
+                runOnUiThread {
+                    // Обновляем статус игрока
+                    val playerIndex = players.indexOfFirst { it.id == playerId }
+                    if (playerIndex != -1) {
+                        val player = players[playerIndex]
+                        players[playerIndex] = player.copy(isReady = isReady)
+                        playerAdapter.notifyItemChanged(playerIndex)
+                        
+                        // Обновляем UI
+                        updateUI()
+                    } else {
+                        Log.e(TAG, "Не найден игрок с ID=$playerId для обновления статуса готовности")
+                    }
+                }
+            }
+            
+            is GameMessage.StartGame -> {
+                // Запускаем игру
+                Log.d(TAG, "Получено сообщение о начале игры")
+                runOnUiThread {
+                    startGameActivity()
+                }
+            }
+            
+            else -> {
+                Log.d(TAG, "Получено неизвестное сообщение типа: ${message.javaClass.name}")
+            }
+        }
+    }
+    
+    override fun onNetworkError(errorMessage: String) {
+        runOnUiThread {
+            Toast.makeText(this, errorMessage, Toast.LENGTH_LONG).show()
+            Log.e(TAG, "Network error: $errorMessage")
+            // Обновляем UI
+            waitingTextView.text = "Ошибка: $errorMessage"
         }
     }
     
     override fun onDestroy() {
         super.onDestroy()
         
-        // Останавливаем сервис Wi-Fi Direct
-        if (::wifiDirectService.isInitialized) {
-            wifiDirectService.stop()
+        try {
+            // Останавливаем сетевой сервис
+            if (::networkService.isInitialized) {
+                networkService.stop()
+                Log.d(TAG, "NetworkService остановлен в onDestroy")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Ошибка при остановке NetworkService в onDestroy: ${e.message}")
+        }
+        
+        // Закрываем диалог выбора сервера
+        serverListDialog?.dismiss()
+    }
+    
+    override fun onConnectionChanged(isConnected: Boolean, serverAddress: String?) {
+        Log.d(TAG, "Статус соединения изменился: isConnected=$isConnected, serverAddress=$serverAddress")
+        
+        runOnUiThread {
+            if (isConnected) {
+                waitingTextView.text = "Подключено к серверу"
+                
+                // Если мы клиент и подключились, отправляем свою информацию
+                if (!isHost) {
+                    // Добавляем задержку перед отправкой, чтобы дать время серверу подготовиться
+                    Handler(Looper.getMainLooper()).postDelayed({
+                        try {
+                            sendLobbyData()
+                            
+                            // Дополнительно показываем Toast для отладки
+                            Toast.makeText(this@LobbyActivity, 
+                                "Отправлены данные на сервер", 
+                                Toast.LENGTH_SHORT).show()
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Ошибка при отправке данных о себе: ${e.message}", e)
+                            Toast.makeText(this@LobbyActivity, 
+                                "Ошибка: ${e.message}", 
+                                Toast.LENGTH_SHORT).show()
+                        }
+                    }, 500) // Задержка 500 мс
+                }
+            } else {
+                waitingTextView.text = "Ожидание подключения..."
+            }
         }
     }
 }
@@ -649,6 +783,46 @@ class PlayerAdapter(private val players: List<Player>) :
             
             playerStatusTextView.text = statusText
             playerStatusTextView.setTextColor(statusColor)
+        }
+    }
+}
+
+// Адаптер для списка серверов
+class ServerAdapter(
+    private val servers: List<NetworkService.ServerInfo>,
+    private val onServerSelected: (NetworkService.ServerInfo) -> Unit
+) : RecyclerView.Adapter<ServerAdapter.ServerViewHolder>() {
+    
+    override fun onCreateViewHolder(parent: android.view.ViewGroup, viewType: Int): ServerViewHolder {
+        val view = android.view.LayoutInflater.from(parent.context)
+            .inflate(R.layout.item_server, parent, false)
+        return ServerViewHolder(view, onServerSelected)
+    }
+    
+    override fun onBindViewHolder(holder: ServerViewHolder, position: Int) {
+        holder.bind(servers[position])
+    }
+    
+    override fun getItemCount() = servers.size
+    
+    class ServerViewHolder(
+        itemView: View,
+        private val onServerSelected: (NetworkService.ServerInfo) -> Unit
+    ) : RecyclerView.ViewHolder(itemView) {
+        private val serverNameTextView: TextView = itemView.findViewById(R.id.serverNameTextView)
+        private val serverAddressTextView: TextView = itemView.findViewById(R.id.serverAddressTextView)
+        
+        fun bind(serverInfo: NetworkService.ServerInfo) {
+            // Устанавливаем имя сервера
+            serverNameTextView.text = serverInfo.name
+            
+            // Устанавливаем адрес сервера
+            serverAddressTextView.text = "${serverInfo.host}:${serverInfo.port}"
+            
+            // Добавляем обработчик нажатия
+            itemView.setOnClickListener {
+                onServerSelected(serverInfo)
+            }
         }
     }
 } 

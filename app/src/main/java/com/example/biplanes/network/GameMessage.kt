@@ -10,6 +10,9 @@ import java.io.Serializable
  * Базовый класс для всех сообщений в игре
  */
 sealed class GameMessage : Serializable {
+    companion object {
+        private const val serialVersionUID = 1L
+    }
     
     /**
      * Сообщение о присоединении игрока к лобби
@@ -17,7 +20,11 @@ sealed class GameMessage : Serializable {
     data class JoinLobby(
         val player: Player,
         val gameType: GameType
-    ) : GameMessage()
+    ) : GameMessage() {
+        companion object {
+            private const val serialVersionUID = 1L
+        }
+    }
     
     /**
      * Сообщение о готовности игрока к игре
@@ -25,7 +32,11 @@ sealed class GameMessage : Serializable {
     data class PlayerReady(
         val playerId: String,
         val isReady: Boolean
-    ) : GameMessage()
+    ) : GameMessage() {
+        companion object {
+            private const val serialVersionUID = 1L
+        }
+    }
     
     /**
      * Сообщение о начале игры
@@ -33,7 +44,11 @@ sealed class GameMessage : Serializable {
     data class StartGame(
         val gameType: GameType,
         val players: List<Player>
-    ) : GameMessage()
+    ) : GameMessage() {
+        companion object {
+            private const val serialVersionUID = 1L
+        }
+    }
     
     /**
      * Сообщение о движении самолета
@@ -43,7 +58,11 @@ sealed class GameMessage : Serializable {
         val position: Vector2D,
         val rotation: Float,
         val velocity: Vector2D
-    ) : GameMessage()
+    ) : GameMessage() {
+        companion object {
+            private const val serialVersionUID = 1L
+        }
+    }
     
     /**
      * Сообщение о выстреле
@@ -53,7 +72,11 @@ sealed class GameMessage : Serializable {
         val position: Vector2D,
         val velocity: Vector2D,
         val color: Int
-    ) : GameMessage()
+    ) : GameMessage() {
+        companion object {
+            private const val serialVersionUID = 1L
+        }
+    }
     
     /**
      * Сообщение о катапультировании пилота
@@ -61,7 +84,11 @@ sealed class GameMessage : Serializable {
     data class Eject(
         val playerId: String,
         val position: Vector2D
-    ) : GameMessage()
+    ) : GameMessage() {
+        companion object {
+            private const val serialVersionUID = 1L
+        }
+    }
     
     /**
      * Сообщение о попадании в самолет
@@ -69,33 +96,62 @@ sealed class GameMessage : Serializable {
     data class Hit(
         val playerId: String,
         val damage: Int
-    ) : GameMessage()
+    ) : GameMessage() {
+        companion object {
+            private const val serialVersionUID = 1L
+        }
+    }
     
     /**
      * Сообщение о уничтожении самолета
      */
     data class PlaneDestroyed(
         val playerId: String
-    ) : GameMessage()
+    ) : GameMessage() {
+        companion object {
+            private const val serialVersionUID = 1L
+        }
+    }
     
     /**
      * Сообщение о спасении пилота
      */
     data class PilotRescued(
         val playerId: String
-    ) : GameMessage()
+    ) : GameMessage() {
+        companion object {
+            private const val serialVersionUID = 1L
+        }
+    }
     
     /**
      * Сообщение о выходе игрока из игры
      */
     data class LeaveGame(
         val playerId: String
-    ) : GameMessage()
+    ) : GameMessage() {
+        companion object {
+            private const val serialVersionUID = 1L
+        }
+    }
     
     /**
      * Сообщение о завершении игры
      */
     data class GameOver(
         val winnerId: String?
-    ) : GameMessage()
+    ) : GameMessage() {
+        companion object {
+            private const val serialVersionUID = 1L
+        }
+    }
+    
+    /**
+     * Сообщение об обновлении типа игры
+     */
+    data class UpdateGameType(val gameType: GameType) : GameMessage() {
+        companion object {
+            private const val serialVersionUID = 1L
+        }
+    }
 } 

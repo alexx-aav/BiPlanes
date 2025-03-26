@@ -34,6 +34,11 @@ class Plane(
     // Добавляем переменную для режима тренировки
     private var isTrainingMode = false
     
+    // Границы экрана и уровень земли
+    var screenWidth: Float = 0f
+    var screenHeight: Float = 0f
+    var groundLevel: Float = 0f
+    
     // Физические константы
     private val gravity = Vector2D(0f, 0.01f)       // Значительно уменьшенная гравитация для стабильного полета
     private val dragCoefficient = 0.002f            // Минимальное сопротивление воздуха
