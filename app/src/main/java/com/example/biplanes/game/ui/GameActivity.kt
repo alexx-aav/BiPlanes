@@ -27,8 +27,12 @@ import com.example.biplanes.game.models.Vector2D
 import com.example.biplanes.network.GameMessage
 import com.example.biplanes.network.NetworkService
 import com.example.biplanes.network.NetworkService.ServiceMode
+import com.example.biplanes.BiplanesApplication
 import java.lang.System.currentTimeMillis
 import java.util.ArrayList
+import java.util.UUID
+import android.content.Context
+import android.content.Intent
 
 /**
  * Активность для игры Biplanes.
@@ -109,9 +113,59 @@ class GameActivity : AppCompatActivity(), NetworkService.NetworkListener {
         playerColor = intent.getSerializableExtra("planeColor") as? PlaneColor ?: PlaneColor.RED
         playerId = intent.getStringExtra("playerId") ?: ""
         
-        // Получаем список игроков
+        // Получаем список игроков и обрабатываем возможные проблемы
         @Suppress("UNCHECKED_CAST")
-        players = intent.getSerializableExtra("players") as? ArrayList<Player> ?: ArrayList()
+        val receivedPlayers = intent.getSerializableExtra("players") as? ArrayList<Player>
+        
+        // Проверяем полученный список игроков
+        if (receivedPlayers != null && receivedPlayers.isNotEmpty()) {
+            players = receivedPlayers.toMutableList()
+            Log.d(TAG, "Получен список игроков из Intent: ${players.size}")
+        } else {
+            // Пробуем восстановить список из SharedPreferences
+            val loadedPlayers = loadPlayersFromPreferences()
+            if (loadedPlayers.isNotEmpty()) {
+                players = loadedPlayers.toMutableList()
+                Log.d(TAG, "Восстановлен список игроков из SharedPreferences: ${players.size}")
+            } else {
+                Log.w(TAG, "Список игроков пуст или не получен! Создаем минимальный список.")
+                
+                // Создаем минимальный список игроков
+                players = mutableListOf(
+                    Player(
+                        id = playerId.ifEmpty { UUID.randomUUID().toString().also { playerId = it } },
+                        name = "Вы",
+                        color = playerColor,
+                        isReady = true,
+                        isHost = isHost
+                    )
+                )
+                
+                // Если это мультиплеер, добавляем еще одного игрока для полноты
+                if (gameType != GameType.TRAINING) {
+                    val enemyColor = if (playerColor == PlaneColor.RED) PlaneColor.BLUE else PlaneColor.RED
+                    players.add(
+                        Player(
+                            id = UUID.randomUUID().toString(),
+                            name = "Противник",
+                            color = enemyColor,
+                            isReady = true,
+                            isHost = !isHost
+                        )
+                    )
+                }
+                
+                Log.d(TAG, "Создан минимальный список игроков: ${players.size}")
+            }
+        }
+        
+        // Сохраняем список игроков в SharedPreferences для возможного восстановления
+        savePlayersToPreferences(players)
+        
+        // Выводим список игроков для отладки
+        players.forEachIndexed { index, player ->
+            Log.d(TAG, "Игрок $index: id=${player.id}, имя=${player.name}, цвет=${player.color}, хост=${player.isHost}")
+        }
 
         // Устанавливаем флаг мультиплеера
         isMultiplayer = gameType != GameType.TRAINING
@@ -148,62 +202,98 @@ class GameActivity : AppCompatActivity(), NetworkService.NetworkListener {
     }
     
     private fun initNetworkService() {
-        // Инициализируем сетевой сервис
-        networkService = NetworkService(this)
+        // Получаем NetworkService из приложения вместо создания нового
+        val app = application as? BiplanesApplication
+            ?: throw IllegalStateException("Application не является BiplanesApplication")
+        
+        networkService = app.getNetworkService()
+            ?: NetworkService(this).also { app.setNetworkService(it) }
+        
+        // Устанавливаем новый слушатель
         networkService.setListener(this)
         
-        // Запускаем сетевой сервис
-        networkService.start()
+        // НЕ запускаем сервис заново, если он уже запущен
+        if (!networkService.isRunning()) {
+            networkService.start()
+        }
         
         Log.d(TAG, "NetworkService инициализирован, isHost=$isHost")
         
         // Если это хост, создаем сервер
         if (isHost) {
             try {
-                // Создаем игровой сервер с уникальным ID игры
-                val gameId = "Game-${players.first { it.isHost }.id.substring(0, 8)}"
-                networkService.createGameServer(gameId)
-                Log.d(TAG, "Создан игровой сервер с ID: $gameId")
+                // Выводим список игроков для отладки
+                Log.d(TAG, "Список игроков для создания сервера (${players.size}):")
+                players.forEachIndexed { index, player ->
+                    Log.d(TAG, "[$index] ID=${player.id}, Name=${player.name}, Color=${player.color}, IsHost=${player.isHost}")
+                }
+                
+                // Проверяем, есть ли хост в списке игроков
+                val hostPlayer = if (players.isNotEmpty()) {
+                    players.find { it.isHost } ?: players.first()
+                } else {
+                    // Если список игроков пуст, создаем временного хоста на основе текущих данных
+                    Log.d(TAG, "Список игроков пуст, создаем временного хоста с ID=$playerId")
+                    Player(
+                        id = playerId,
+                        name = "Хост", 
+                        color = playerColor,
+                        isReady = true,
+                        isHost = true
+                    )
+                }
+                
+                // Создаем игровой сервер с ID на основе ID хоста
+                val gameId = "Game-${hostPlayer.id.substring(0, Math.min(8, hostPlayer.id.length))}"
+                Log.d(TAG, "Создаем игровой сервер с ID: $gameId на основе хоста: ${hostPlayer.id}")
+                
+                // Переключаем режим сервиса на игровой без остановки существующих соединений
+                networkService.switchToGameMode(gameId)
+                
+                Log.d(TAG, "Игровой режим активирован с ID: $gameId")
+                
+                // Запускаем игру автоматически
+                startGame()
             } catch (e: Exception) {
-                Log.e(TAG, "Ошибка при создании сервера: ${e.message}")
+                Log.e(TAG, "Ошибка при создании сервера: ${e.message}", e)
+                
+                // Повторная попытка с фиксированным ID в случае ошибки
+                try {
+                    val fallbackGameId = "Game-Fallback-$playerId"
+                    Log.d(TAG, "Повторная попытка создания сервера с резервным ID: $fallbackGameId")
+                    networkService.switchToGameMode(fallbackGameId)
+                    Log.d(TAG, "Создан резервный игровой сервер с ID: $fallbackGameId")
+                    
+                    // Запускаем игру даже при использовании резервного ID
+                    startGame()
+                } catch (e: Exception) {
+                    Log.e(TAG, "Ошибка при создании резервного сервера: ${e.message}", e)
+                }
             }
         } else {
-            // Если мы клиент (не хост), начинаем поиск серверов
-            try {
-                Log.d(TAG, "Начинаем поиск серверов (клиент)")
-                networkService.discoverServers()
-                
-                // Ищем хоста в списке игроков
-                val hostPlayer = players.find { it.isHost }
-                if (hostPlayer != null) {
-                    Log.d(TAG, "Найден хост в списке игроков: ${hostPlayer.id}")
-                    
-                    // Ожидаем обнаружения игровых серверов и подключаемся к первому найденному
-                    // В реальной реализации можно добавить логику для выбора нужного сервера
-                    Handler(Looper.getMainLooper()).postDelayed({
-                        val discoveredServers = networkService.getFilteredServers(ServiceMode.GAME)
-                        Log.d(TAG, "Найдено ${discoveredServers.size} игровых серверов")
-                        
-                        if (discoveredServers.isNotEmpty()) {
-                            // Подключаемся к первому найденному серверу
-                            val server = discoveredServers.first()
-                            Log.d(TAG, "Подключаемся к игровому серверу: ${server.name}")
-                            networkService.connectToServer(server)
-                        } else {
-                            // Если серверы не найдены, показываем сообщение
-                            runOnUiThread {
-                                Toast.makeText(
-                                    this,
-                                    "Не удалось найти игровой сервер. Переподключитесь.",
-                                    Toast.LENGTH_LONG
-                                ).show()
-                            }
-                        }
-                    }, 1500) // Даем время на обнаружение серверов
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Ошибка при поиске серверов: ${e.message}")
-            }
+            // Для клиента ничего особого делать не нужно - соединение уже установлено
+            // Отправляем сообщение JoinGame для уведомления сервера
+            sendJoinGameMessage()
+            
+            // Запускаем игру автоматически для клиента
+            startGame()
+        }
+        
+        // Отправляем начальные данные о самолете, чтобы другие могли его видеть
+        handler.postDelayed({
+            sendInitialPlaneInfo()
+        }, 1000) // Немного задержки, чтобы самолет успел инициализироваться
+    }
+
+    private fun sendJoinGameMessage() {
+        val player = players.find { it.id == playerId } ?: return
+        val joinMessage = GameMessage.JoinGame(player)
+        
+        try {
+            networkService.sendMessage(joinMessage)
+            Log.d(TAG, "Отправлено сообщение о присоединении к игре")
+        } catch (e: Exception) {
+            Log.e(TAG, "Ошибка при отправке сообщения о присоединении к игре: ${e.message}")
         }
     }
 
@@ -407,12 +497,17 @@ class GameActivity : AppCompatActivity(), NetworkService.NetworkListener {
             val joystickX = binding.joystick.getXPercent()
             val joystickY = binding.joystick.getYPercent()
             
+            // Добавляем логирование, когда джойстик активно используется
+            if (joystickX != 0f || joystickY != 0f) {
+                Log.d(TAG, "Джойстик активен: X=$joystickX, Y=$joystickY")
+            }
+            
             // Обновляем состояние игры - передаем текущие значения флагов
             binding.gameView.controlPlayerPlane(joystickX, joystickY, isFiring, isEjecting)
             
             // Периодически выводим отладочную информацию
-            if (System.currentTimeMillis() % 1000 < 16) { // Примерно раз в секунду
-                Log.d(TAG, "Джойстик: X=$joystickX, Y=$joystickY, Стрельба=$isFiring, Катапульта=$isEjecting")
+            if (System.currentTimeMillis() % 3000 < 16) { // Примерно раз в 3 секунды
+                Log.d(TAG, "Джойстик: X=$joystickX, Y=$joystickY, Стрельба=$isFiring, Катапульта=$isEjecting, isGameStarted=$isGameStarted")
             }
         } catch (e: Exception) {
             Log.e(TAG, "Ошибка в updateGame: ${e.message}")
@@ -491,7 +586,8 @@ class GameActivity : AppCompatActivity(), NetworkService.NetworkListener {
         // Создаем новый обработчик
         joystickUpdateRunnable = object : Runnable {
             override fun run() {
-                if (isGameStarted && !isPaused) {
+                // Всегда обновляем контролы, если игра не на паузе
+                if (!isPaused) {
                     updateControls()
                 }
                 handler.postDelayed(this, joystickUpdateInterval)
@@ -500,7 +596,7 @@ class GameActivity : AppCompatActivity(), NetworkService.NetworkListener {
         
         // Запускаем обновление джойстика
         handler.post(joystickUpdateRunnable)
-        Log.d(TAG, "Джойстик запущен")
+        Log.d(TAG, "Джойстик запущен, isGameStarted=$isGameStarted")
     }
 
     private fun stopJoystickUpdates() {
@@ -800,13 +896,13 @@ class GameActivity : AppCompatActivity(), NetworkService.NetworkListener {
                 // Отправляем несколько раз для надежности с короткими интервалами
                 Thread {
                     try {
-                        // Отправляем сообщение каждые 100 мс в течение 1 секунды
-                        for (i in 0..10) {
+                        // Отправляем сообщение каждые 100 мс в течение 2 секунд
+                        for (i in 0..20) {
                             networkService.sendMessage(message)
                             Thread.sleep(100)
                         }
                         
-                        Log.d(TAG, "Начальные данные о самолете отправлены: позиция=(${playerPlane.position.x}, ${playerPlane.position.y})")
+                        Log.d(TAG, "Начальные данные о самолете отправлены (20 раз): позиция=(${playerPlane.position.x}, ${playerPlane.position.y})")
                     } catch (e: Exception) {
                         Log.e(TAG, "Ошибка отправки начальных данных о самолете: ${e.message}")
                     }
@@ -816,6 +912,153 @@ class GameActivity : AppCompatActivity(), NetworkService.NetworkListener {
             }
         } else {
             Log.e(TAG, "Не удалось получить самолет игрока для отправки начальных данных")
+        }
+    }
+
+    /**
+     * Обработка изменения статуса соединения
+     */
+    override fun onConnectionStatusChanged(isConnected: Boolean, serverAddress: String?) {
+        Log.d(TAG, "Статус соединения изменился: isConnected=$isConnected, serverAddress=$serverAddress")
+        
+        // Обновляем интерфейс и управление
+        runOnUiThread {
+            if (isConnected) {
+                // Соединение установлено, показываем сообщение
+                Toast.makeText(
+                    this,
+                    "Соединение с сервером установлено",
+                    Toast.LENGTH_SHORT
+                ).show()
+                
+                // Убеждаемся, что игра запущена после успешного соединения
+                if (!isGameStarted) {
+                    startGame()
+                } else {
+                    // Если игра уже запущена, просто обновляем контролы
+                    updateControls()
+                }
+            } else {
+                // Соединение потеряно, показываем сообщение
+                Toast.makeText(
+                    this,
+                    "Соединение с сервером потеряно",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    }
+
+    /**
+     * Сохраняет список игроков в SharedPreferences
+     */
+    private fun savePlayersToPreferences(players: List<Player>) {
+        try {
+            val prefs = getSharedPreferences("GameData", Context.MODE_PRIVATE)
+            val editor = prefs.edit()
+            
+            // Сохраняем количество игроков
+            editor.putInt("players_count", players.size)
+            
+            // Сохраняем данные каждого игрока
+            players.forEachIndexed { index, player ->
+                editor.putString("player_${index}_id", player.id)
+                editor.putString("player_${index}_name", player.name)
+                editor.putString("player_${index}_color", player.color.name)
+                editor.putBoolean("player_${index}_isReady", player.isReady)
+                editor.putBoolean("player_${index}_isHost", player.isHost)
+            }
+            
+            // Сохраняем тип игры, если он установлен
+            if (gameType != null) {
+                editor.putString("game_type", gameType.name)
+            }
+            
+            // Применяем изменения
+            editor.apply()
+            
+            Log.d(TAG, "Сохранено ${players.size} игроков в SharedPreferences")
+        } catch (e: Exception) {
+            Log.e(TAG, "Ошибка при сохранении списка игроков: ${e.message}", e)
+        }
+    }
+    
+    /**
+     * Загружает список игроков из SharedPreferences
+     */
+    private fun loadPlayersFromPreferences(): List<Player> {
+        val players = mutableListOf<Player>()
+        
+        try {
+            val prefs = getSharedPreferences("GameData", Context.MODE_PRIVATE)
+            val playersCount = prefs.getInt("players_count", 0)
+            
+            if (playersCount > 0) {
+                // Загружаем данные каждого игрока
+                for (i in 0 until playersCount) {
+                    val id = prefs.getString("player_${i}_id", "") ?: ""
+                    val name = prefs.getString("player_${i}_name", "") ?: ""
+                    val colorName = prefs.getString("player_${i}_color", "RED") ?: "RED"
+                    val isReady = prefs.getBoolean("player_${i}_isReady", true)
+                    val isHost = prefs.getBoolean("player_${i}_isHost", false)
+                    
+                    // Преобразуем строковое имя цвета в enum
+                    val color = try {
+                        PlaneColor.valueOf(colorName)
+                    } catch (e: Exception) {
+                        PlaneColor.RED
+                    }
+                    
+                    // Создаем игрока и добавляем в список
+                    val player = Player(
+                        id = id,
+                        name = name,
+                        color = color,
+                        isReady = isReady,
+                        isHost = isHost
+                    )
+                    
+                    players.add(player)
+                }
+                
+                Log.d(TAG, "Загружено ${players.size} игроков из SharedPreferences")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Ошибка при загрузке списка игроков: ${e.message}", e)
+        }
+        
+        return players
+    }
+    
+    /**
+     * Сохраняет ID игрового сервера в SharedPreferences
+     */
+    private fun saveGameServerIdToPreferences(serverId: String) {
+        try {
+            val prefs = getSharedPreferences("GameData", Context.MODE_PRIVATE)
+            val editor = prefs.edit()
+            editor.putString("game_server_id", serverId)
+            editor.apply()
+            Log.d(TAG, "Сохранен ID игрового сервера в SharedPreferences: $serverId")
+        } catch (e: Exception) {
+            Log.e(TAG, "Ошибка при сохранении ID игрового сервера: ${e.message}", e)
+        }
+    }
+    
+    /**
+     * Загружает ID игрового сервера из SharedPreferences
+     */
+    private fun loadGameServerIdFromPreferences(): String {
+        try {
+            val prefs = getSharedPreferences("GameData", Context.MODE_PRIVATE)
+            val serverId = prefs.getString("game_server_id", "") ?: ""
+            if (serverId.isNotEmpty()) {
+                Log.d(TAG, "Загружен ID игрового сервера из SharedPreferences: $serverId")
+            }
+            return serverId
+        } catch (e: Exception) {
+            Log.e(TAG, "Ошибка при загрузке ID игрового сервера: ${e.message}", e)
+            return ""
         }
     }
 } 

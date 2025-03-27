@@ -202,85 +202,111 @@ class GameView @JvmOverloads constructor(
      * Создает самолет игрока при инициализации игры
      */
     private fun initPlayerPlane() {
-        createPlayerPlane(
-            relativeHeight = 1/3f,
-            initialVelocity = Vector2D(5.0f, 0.0f),
-            addToStart = false
-        )
-    }
-    
-    /**
-     * Создает самолет игрока с заданными параметрами
-     * @param relativeHeight Относительная высота самолета (от высоты экрана)
-     * @param initialVelocity Начальная скорость самолета
-     * @param addToStart Добавлять самолет в начало списка (иначе в конец)
-     */
-    private fun createPlayerPlane(
-        relativeHeight: Float = 0.3f,
-        initialVelocity: Vector2D = Vector2D(5.0f, 0.0f),
-        addToStart: Boolean = false
-    ) {
-        try {
-            Log.d(TAG, "Создание самолёта игрока: relativeHeight=$relativeHeight, initialVelocity=$initialVelocity, addToStart=$addToStart")
-            
-            // Проверяем, что размеры экрана установлены
-            if (width == 0 || height == 0) {
-                Log.d(TAG, "Размеры экрана не установлены, откладываем создание самолета")
-                return
-            }
-            
-            // Вычисляем позицию
-            val screenWidth = width.toFloat()
-            val screenHeight = height.toFloat()
-            val startX = screenWidth / 2f
-            val startY = screenHeight * relativeHeight
-            
-            // Создаем самолет
-            val plane = Plane(
-                position = Vector2D(startX, startY),
-                width = planeWidth,
-                height = planeHeight,
-                color = planeColor.color,
-                isPlayer = true,
-                maxSpeed = 12f
-            )
-            
-            // Устанавливаем начальную скорость и направление
-            plane.velocity = initialVelocity
-            plane.rotation = 0f
-            
-            // Устанавливаем режим тренировки для самолета
-            if (gameType == GameType.TRAINING) {
-                plane.setTrainingMode(true)
-            }
-            
-            // Создаем пилота с тем же цветом, что и самолет
-            val pilot = Pilot(planeColor.color, planeWidth / 4)
-            plane.assignPilot(pilot)
-            
-            // Добавляем самолет в список
-            if (addToStart) {
-                planes.add(0, plane)
-            } else {
-                planes.add(plane)
-            }
-            
-            Log.d(TAG, "Самолёт игрока создан на позиции (${startX}, ${startY}) с размерами ${planeWidth}x${planeHeight}")
-        } catch (e: Exception) {
-            Log.e(TAG, "Ошибка при создании самолёта игрока: ${e.message}")
-            e.printStackTrace()
+        // Сбросим список самолетов при инициализации для избежания дублирования
+        planes.clear()
+        
+        // Определим разные начальные позиции для хоста и клиента
+        val relativeHeight = 1/3f
+        
+        // Устанавливаем разные начальные позиции для хоста и клиента
+        // чтобы они не появлялись в одном месте
+        val startX = if (isHost) {
+            width.toFloat() * 0.3f  // Хост начинает с левой части экрана
+        } else {
+            width.toFloat() * 0.7f  // Клиент начинает с правой части экрана
         }
+        
+        val startY = height.toFloat() * relativeHeight
+        
+        // Создаем самолет
+        val plane = Plane(
+            position = Vector2D(startX, startY),
+            width = planeWidth,
+            height = planeHeight,
+            color = planeColor.color,
+            isPlayer = true,
+            maxSpeed = 12f
+        )
+        
+        // Устанавливаем ID самолета
+        plane.id = playerId
+        
+        // Устанавливаем начальную скорость и направление
+        plane.velocity = Vector2D(5.0f, 0.0f)
+        plane.rotation = 0f
+        
+        // Устанавливаем режим тренировки для самолета
+        if (gameType == GameType.TRAINING) {
+            plane.setTrainingMode(true)
+        }
+        
+        // Создаем пилота с тем же цветом, что и самолет
+        val pilot = Pilot(planeColor.color, planeWidth / 4)
+        plane.assignPilot(pilot)
+        
+        // Устанавливаем границы экрана
+        plane.screenWidth = width.toFloat()
+        plane.screenHeight = height.toFloat()
+        plane.groundLevel = groundHeight
+        
+        // Добавляем самолет в список
+        planes.add(plane)
+        
+        Log.d(TAG, "Самолёт игрока создан на позиции (${startX}, ${startY}) с ID=${playerId} и размерами ${planeWidth}x${planeHeight}")
     }
     
     /**
      * Создает новый самолет игрока во время игры
      */
     fun createNewPlayerPlane() {
-        createPlayerPlane(
-            relativeHeight = 0.3f,
-            initialVelocity = Vector2D(10.0f, -2.0f),
-            addToStart = true
+        // Определяем разные начальные позиции для хоста и клиента
+        val relativeHeight = 0.3f
+        
+        // Устанавливаем разные начальные позиции для хоста и клиента
+        // чтобы они не появлялись в одном месте
+        val startX = if (isHost) {
+            width.toFloat() * 0.3f  // Хост начинает с левой части экрана
+        } else {
+            width.toFloat() * 0.7f  // Клиент начинает с правой части экрана
+        }
+        
+        val startY = height.toFloat() * relativeHeight
+        
+        // Создаем самолет
+        val plane = Plane(
+            position = Vector2D(startX, startY),
+            width = planeWidth,
+            height = planeHeight,
+            color = planeColor.color,
+            isPlayer = true,
+            maxSpeed = 12f
         )
+        
+        // Устанавливаем ID самолета
+        plane.id = playerId
+        
+        // Устанавливаем начальную скорость и направление
+        plane.velocity = Vector2D(10.0f, -2.0f)
+        plane.rotation = 0f
+        
+        // Устанавливаем режим тренировки для самолета
+        if (gameType == GameType.TRAINING) {
+            plane.setTrainingMode(true)
+        }
+        
+        // Создаем пилота с тем же цветом, что и самолет
+        val pilot = Pilot(planeColor.color, planeWidth / 4)
+        plane.assignPilot(pilot)
+        
+        // Устанавливаем границы экрана
+        plane.screenWidth = width.toFloat()
+        plane.screenHeight = height.toFloat()
+        plane.groundLevel = groundHeight
+        
+        // Добавляем самолет в список в начало
+        planes.add(0, plane)
+        
+        Log.d(TAG, "Новый самолёт игрока создан на позиции (${startX}, ${startY}) с ID=${playerId} и размерами ${planeWidth}x${planeHeight}")
     }
 
     private fun createEnemyPlane() {
@@ -321,7 +347,13 @@ class GameView @JvmOverloads constructor(
                 return
             }
             
-            val playerPlane = planes[0]
+            // Получаем самолет игрока по ID или первый управляемый самолет
+            val playerPlane = getPlayerPlane()
+            
+            if (playerPlane == null) {
+                Log.w(TAG, "Player plane not found, cannot control")
+                return
+            }
             
             if (playerPlane.isDestroyed) {
                 Log.w(TAG, "Player plane is destroyed, cannot control")
@@ -891,7 +923,7 @@ class GameView @JvmOverloads constructor(
                         this.planeColor = pilotPlaneColor
                         
                         // Создаем самолет и получаем ссылку на него (последний добавленный в список)
-                        createPlayerPlane(relativeHeight = 0.4f, initialVelocity = Vector2D(5.0f, 0.0f), addToStart = true)
+                        createNewPlayerPlane()
                         playerPlane = planes.firstOrNull()
                     } finally {
                         // Восстанавливаем оригинальный цвет
@@ -1045,10 +1077,17 @@ class GameView @JvmOverloads constructor(
             Log.d(TAG, "Игровой поток уже запущен")
         }
         
-        // Избегаем дублирования самолетов
-        // Создадим самолет игрока только если список пуст
-        if (width > 0 && height > 0 && planes.isEmpty()) {
-            createNewPlayerPlane()
+        // Создаем самолет игрока только если он еще не существует и у нас есть ID игрока
+        if (width > 0 && height > 0 && playerId.isNotEmpty()) {
+            val existingPlane = planes.find { it.id == playerId }
+            if (existingPlane == null) {
+                Log.d(TAG, "Создаем самолет для игрока с ID=$playerId в surfaceCreated")
+                initPlayerPlane()
+            } else {
+                Log.d(TAG, "Самолет игрока с ID=$playerId уже существует")
+            }
+        } else {
+            Log.d(TAG, "Не создаем самолет в surfaceCreated: width=$width, height=$height, playerId=$playerId")
         }
     }
     
@@ -1113,6 +1152,13 @@ class GameView @JvmOverloads constructor(
      */
     fun updateRemotePlane(planeId: String, position: Vector2D, rotation: Float, velocity: Vector2D) {
         try {
+            // Проверка на NaN значения в позиции или скорости
+            if (position.x.isNaN() || position.y.isNaN() || 
+                velocity.x.isNaN() || velocity.y.isNaN()) {
+                Log.w(TAG, "Получены невалидные данные для самолета $planeId: позиция=(${position.x}, ${position.y}), скорость=(${velocity.x}, ${velocity.y})")
+                return  // Пропускаем обновление с невалидными данными
+            }
+            
             Log.d(TAG, "Получены данные о самолете $planeId: позиция=(${position.x}, ${position.y}), поворот=$rotation")
             
             // Проверяем, является ли этот самолет самолетом игрока
@@ -1126,9 +1172,9 @@ class GameView @JvmOverloads constructor(
             
             if (plane != null) {
                 // Если самолет существует, обновляем его позицию и ориентацию
-                plane.position = position
+                plane.position = position.copy()  // Используем copy для избегания проблем с ссылками
                 plane.rotation = rotation
-                plane.velocity = velocity
+                plane.velocity = velocity.copy()  // Используем copy для избегания проблем с ссылками
                 Log.d(TAG, "Обновлен удаленный самолет $planeId: позиция=(${position.x}, ${position.y}), поворот=$rotation")
             } else {
                 // Если самолет не существует, создаем новый
@@ -1147,10 +1193,15 @@ class GameView @JvmOverloads constructor(
                     Log.d(TAG, "Игрок не найден в списке, используем цвет по умолчанию")
                 }
                 
-                // Создаем новый самолет с помощью универсального метода
-                val newPlane = createPlane(position.x, position.y, planeColor, planeId)
+                // Проверка и коррекция позиции (чтобы самолет не создавался за пределами экрана)
+                val correctedPosition = correctInitialPosition(position)
+                
+                // Создаем новый самолет, указывая isPlayer = false для удаленных самолетов
+                val newPlane = createRemotePlane(correctedPosition.x, correctedPosition.y, planeColor, planeId)
+                
+                // Применяем полученную ориентацию и скорость
                 newPlane.rotation = rotation
-                newPlane.velocity = velocity
+                newPlane.velocity = velocity.copy()  // Используем copy для избегания проблем с ссылками
                 
                 // Добавляем самолет в список
                 planes.add(newPlane)
@@ -1158,12 +1209,53 @@ class GameView @JvmOverloads constructor(
                 // Выводим список всех самолетов для отладки
                 logAllPlanes()
                 
-                Log.d(TAG, "Создан новый удаленный самолет $planeId: позиция=(${position.x}, ${position.y}), поворот=$rotation")
+                Log.d(TAG, "Создан новый удаленный самолет $planeId: позиция=(${correctedPosition.x}, ${correctedPosition.y}), поворот=$rotation")
             }
         } catch (e: Exception) {
             Log.e(TAG, "Ошибка при обновлении удаленного самолета: ${e.message}")
             e.printStackTrace()
         }
+    }
+    
+    // Метод специально для создания удаленного самолета
+    private fun createRemotePlane(x: Float, y: Float, color: Int, planeId: String): Plane {
+        // Определяем размеры самолета относительно экрана
+        val planeWidth = width * 0.04f
+        val planeHeight = planeWidth / 2
+        
+        // Проверяем, что позиция не равна нулю (вне экрана)
+        val correctedX = if (x <= 0) width * 0.3f else x
+        val correctedY = if (y <= 0) height * 0.3f else y
+        
+        // Создаем самолет
+        val plane = Plane(
+            position = Vector2D(correctedX, correctedY),
+            width = planeWidth,
+            height = planeHeight,
+            color = color,
+            isPlayer = false,  // Важно: удаленный самолет никогда не управляемый
+            maxSpeed = 12f
+        )
+        
+        // Устанавливаем ID
+        plane.id = planeId
+        
+        // Инициализируем начальные параметры
+        plane.velocity = Vector2D(5f, 0f)
+        plane.rotation = 0f
+        
+        // Устанавливаем границы экрана
+        plane.screenWidth = width.toFloat()
+        plane.screenHeight = height.toFloat()
+        plane.groundLevel = groundHeight
+        
+        // Добавляем пилота с соответствующим цветом
+        val pilot = Pilot(color, planeWidth / 4)
+        plane.assignPilot(pilot)
+        
+        Log.d(TAG, "Создан удаленный самолет с ID $planeId, позиция=(${correctedX}, ${correctedY}), цвет=$color, isPlayer=false")
+        
+        return plane
     }
     
     /**
@@ -1306,19 +1398,44 @@ class GameView @JvmOverloads constructor(
         }
     }
 
+    // Метод для коррекции начальной позиции (чтобы самолет не создавался за пределами экрана)
+    private fun correctInitialPosition(position: Vector2D): Vector2D {
+        val correctedX = when {
+            position.x < 0 -> width * 0.1f
+            position.x > width -> width * 0.9f
+            else -> position.x
+        }
+        
+        val correctedY = when {
+            position.y < 0 -> height * 0.3f
+            position.y > groundHeight -> groundHeight - 50f
+            else -> position.y
+        }
+        
+        if (correctedX != position.x || correctedY != position.y) {
+            Log.d(TAG, "Скорректирована позиция самолета: оригинальная=(${position.x}, ${position.y}), новая=($correctedX, $correctedY)")
+        }
+        
+        return Vector2D(correctedX, correctedY)
+    }
+
     // Универсальный метод для создания самолета с заданными параметрами
     private fun createPlane(x: Float, y: Float, color: Int, planeId: String? = null): Plane {
         // Определяем размеры самолета относительно экрана
         val planeWidth = width * 0.04f
         val planeHeight = planeWidth / 2
         
+        // Проверяем, что позиция не равна нулю (вне экрана)
+        val correctedX = if (x <= 0) width * 0.3f else x
+        val correctedY = if (y <= 0) height * 0.3f else y
+        
         // Создаем самолет
         val plane = Plane(
-            position = Vector2D(x, y),
+            position = Vector2D(correctedX, correctedY),
             width = planeWidth,
             height = planeHeight,
             color = color,
-            isPlayer = planeId == playerId,
+            isPlayer = planeId == playerId,  // Только наш самолет управляемый
             maxSpeed = 12f
         )
         
@@ -1336,7 +1453,11 @@ class GameView @JvmOverloads constructor(
         plane.screenHeight = height.toFloat()
         plane.groundLevel = groundHeight
         
-        Log.d(TAG, "Создан самолет с ID $planeId, позиция=(${x}, ${y}), цвет=$color")
+        // Добавляем пилота с соответствующим цветом
+        val pilot = Pilot(color, planeWidth / 4)
+        plane.assignPilot(pilot)
+        
+        Log.d(TAG, "Создан самолет с ID $planeId, позиция=(${correctedX}, ${correctedY}), цвет=$color, isPlayer=${planeId == playerId}")
         
         return plane
     }
@@ -1556,6 +1677,12 @@ class GameView @JvmOverloads constructor(
     
     // Метод для создания тестового самолета противника (для отладки)
     fun createTestEnemyPlane() {
+        // В мультиплеере не создаем тестовый самолет, так как будут реальные противники
+        if (isMultiplayerGame()) {
+            Log.d(TAG, "В мультиплеере не создаем тестовый самолет")
+            return
+        }
+        
         // Получаем противоположный цвет от цвета игрока
         val enemyColor = when (planeColor) {
             PlaneColor.RED -> PlaneColor.BLUE
@@ -1593,5 +1720,10 @@ class GameView @JvmOverloads constructor(
         } catch (e: Exception) {
             Log.e(TAG, "Ошибка при остановке игрового потока: ${e.message}")
         }
+    }
+
+    // Вспомогательный метод для определения, играем ли мы в мультиплеере
+    private fun isMultiplayerGame(): Boolean {
+        return gameType != GameType.TRAINING
     }
 } 

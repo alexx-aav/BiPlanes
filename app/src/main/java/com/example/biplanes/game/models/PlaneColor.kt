@@ -1,11 +1,13 @@
 package com.example.biplanes.game.models
 
 import android.graphics.Color
+import java.io.Serializable
 
 /**
- * Перечисление цветов самолетов
+ * Перечисление цветов самолетов.
+ * @property color Цвет в формате RGB.
  */
-enum class PlaneColor(val color: Int) {
+enum class PlaneColor(val color: Int) : Serializable {
     RED(Color.RED),
     BLUE(Color.BLUE),
     GREEN(Color.GREEN),
@@ -13,7 +15,10 @@ enum class PlaneColor(val color: Int) {
     PURPLE(0xFF800080.toInt()),
     ORANGE(0xFFFFA500.toInt());
     
+    // Добавляем serialVersionUID для совместимости сериализации
     companion object {
+        private const val serialVersionUID = 987654321L
+        
         /**
          * Получить цвет по индексу
          */

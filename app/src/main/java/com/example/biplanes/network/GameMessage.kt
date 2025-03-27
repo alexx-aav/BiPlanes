@@ -11,7 +11,19 @@ import java.io.Serializable
  */
 sealed class GameMessage : Serializable {
     companion object {
-        private const val serialVersionUID = 1L
+        private const val serialVersionUID = 2L // Увеличиваем версию для контроля совместимости
+    }
+    
+    /**
+     * Сообщение подтверждения
+     */
+    data class ConnectionConfirmation(
+        val status: Boolean,
+        val message: String
+    ) : GameMessage() {
+        companion object {
+            private const val serialVersionUID = 1L
+        }
     }
     
     /**
@@ -44,6 +56,29 @@ sealed class GameMessage : Serializable {
     data class StartGame(
         val gameType: GameType,
         val players: List<Player>
+    ) : GameMessage() {
+        companion object {
+            private const val serialVersionUID = 1L
+        }
+    }
+    
+    /**
+     * Сообщение о пинге для проверки соединения
+     */
+    data class Ping(
+        val timestamp: Long
+    ) : GameMessage() {
+        companion object {
+            private const val serialVersionUID = 1L
+        }
+    }
+    
+    /**
+     * Сообщение о понге (ответ на пинг)
+     */
+    data class Pong(
+        val originalTimestamp: Long,
+        val currentTimestamp: Long
     ) : GameMessage() {
         companion object {
             private const val serialVersionUID = 1L
@@ -150,6 +185,75 @@ sealed class GameMessage : Serializable {
      * Сообщение об обновлении типа игры
      */
     data class UpdateGameType(val gameType: GameType) : GameMessage() {
+        companion object {
+            private const val serialVersionUID = 1L
+        }
+    }
+    
+    /**
+     * Сообщение о присоединении к игре (после запуска GameActivity)
+     */
+    data class JoinGame(val player: Player) : GameMessage() {
+        companion object {
+            private const val serialVersionUID = 1L
+        }
+    }
+    
+    /**
+     * Сообщение об обновлении состояния игрока во время игры
+     */
+    data class UpdateGamePlayer(
+        val player: Player, 
+        val planePosition: Pair<Float, Float>?, 
+        val planeVelocity: Pair<Float, Float>?
+    ) : GameMessage() {
+        companion object {
+            private const val serialVersionUID = 1L
+        }
+    }
+    
+    /**
+     * Сообщение о выстреле
+     */
+    data class PlayerShot(
+        val playerId: String, 
+        val startPosition: Pair<Float, Float>, 
+        val direction: Pair<Float, Float>
+    ) : GameMessage() {
+        companion object {
+            private const val serialVersionUID = 1L
+        }
+    }
+    
+    /**
+     * Сообщение о попадании в самолет
+     */
+    data class PlaneHit(
+        val playerId: String, 
+        val hitPosition: Pair<Float, Float>
+    ) : GameMessage() {
+        companion object {
+            private const val serialVersionUID = 1L
+        }
+    }
+    
+    /**
+     * Сообщение об обновлении списка всех игроков (синхронизация)
+     */
+    data class UpdatePlayersList(
+        val players: List<Player>
+    ) : GameMessage() {
+        companion object {
+            private const val serialVersionUID = 1L
+        }
+    }
+    
+    /**
+     * Сообщение о смене хоста (если текущий хост вышел)
+     */
+    data class HostChanged(
+        val newHostId: String
+    ) : GameMessage() {
         companion object {
             private const val serialVersionUID = 1L
         }
