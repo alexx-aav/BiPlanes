@@ -33,7 +33,16 @@ abstract class BaseDialog(context: Context) : Dialog(context) {
 
     override fun show() {
         super.show()
-        DialogAnimator.animateDialogItems(dialogView)
+        DialogAnimator.animateDialog(
+            dialogView,
+            duration = 200,
+            startAlpha = 0f,
+            endAlpha = 1f,
+            startY = 50f,
+            endY = 0f,
+            startScale = 1f,
+            endScale = 1f,
+        )
     }
 
     override fun dismiss() {

@@ -2,16 +2,18 @@ package com.example.biplanes.game.models.objects
 
 import android.graphics.Canvas
 import android.graphics.Paint
+import android.graphics.RectF
 import android.graphics.Color
+import com.example.biplanes.game.models.Collidable
 import com.example.biplanes.game.models.Vector2D
 import android.util.Log
 
 class Bullet(
-    val color: Int,
-    val damage: Int = 25,
-    val radius: Float = 8f
-) {
-    var position = Vector2D()
+    override val color: Int,
+    override var damage: Int = 25,
+    override var radius: Float = 8f
+) : BaseObject(Vector2D()), Collidable {
+    override var position: Vector2D = Vector2D()
     var velocity = Vector2D()
     var isDestroyed = false
     var lifeTime = 0f
@@ -27,6 +29,9 @@ class Bullet(
     ) : this(color, damage, radius) {
         this.position = position
         this.velocity = velocity
+    }
+    init{
+        width = radius * 2
     }
     
     fun update(deltaTime: Float) {
@@ -81,11 +86,36 @@ class Bullet(
         paint.alpha = originalAlpha
     }
 
-    fun hit(plane: Plane) {
-        if (!isDestroyed) {
-            plane.takeDamage(damage)
-            isDestroyed = true
-            Log.d("Bullet", "Пуля попала в самолет и нанесла $damage урона")
+    override var width: Float = radius * 2
+    override var height: Float = radius * 2
+    override val bounds: RectF
+        get() = RectF(position.x - radius, position.y - radius, position.x + radius, position.y + radius)
+
+    override fun checkCollision(other: Collidable): Boolean {
+        return when (other) {
+            is Plane -> checkCollisionWithPlane(other)
+            is Target -> checkCollisionWithTarget(other)
+            else -> false
         }
+    }
+
+    private fun checkCollisionWithPlane(other: Plane): Boolean {
+        return RectF.intersects(bounds, other.bounds)
+    }
+
+    private fun checkCollisionWithTarget(other: Target): Boolean {
+        return RectF.intersects(bounds, other.bounds)
+    }
+
+    fun hit(collidable: Collidable){
+        when (collidable) {
+            is Plane -> {
+                collidable.takeDamage(damage)
+            }
+            is Target -> {
+                collidable.hit()
+            }
+        }
+        isDestroyed = true
     }
 } 

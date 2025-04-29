@@ -12,6 +12,8 @@ import kotlin.math.min
 import android.graphics.Color
 import kotlin.random.Random
 
+import com.example.biplanes.game.models.Collidable
+import android.graphics.RectF
 class Plane(
     var position: Vector2D,
     val width: Float,
@@ -20,7 +22,7 @@ class Plane(
     val isPlayer: Boolean,
     var maxSpeed: Float
 ) {
-    var id: String = ""
+    var id: String = ""    
     var velocity: Vector2D = Vector2D(0f, 0f)
     var acceleration: Vector2D = Vector2D(0f, 0f)
     var rotation: Float = 0f
@@ -647,13 +649,7 @@ class Plane(
         return Color.argb(a, r, g, b)
     }
 
-    fun checkCollision(bullet: Bullet): Boolean {
-        if (isDestroyed || bullet.isDestroyed) return false
-        
-        // Простая проверка столкновения на основе расстояния
-        val distance = Vector2D.distance(position, bullet.position)
-        return distance < (width + bullet.radius) / 2
-    }
+
 
     // Метод для установки режима тренировки
     fun setTrainingMode(isTraining: Boolean) {
@@ -776,4 +772,20 @@ class Plane(
     fun isAutopilotEnabled(): Boolean {
         return autopilotEnabled
     }
+}
+
+
+
+
+
+
+
+
+
+
+extension Plane: Collidable {
+    override val bounds: RectF get() = RectF(position.x - width / 2, position.y - height / 2, position.x + width / 2, position.y + height / 2)
+    override fun checkCollision(other: Collidable): Boolean = RectF.intersects(bounds, other.bounds)
+
+    
 }

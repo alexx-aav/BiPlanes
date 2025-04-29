@@ -28,14 +28,11 @@ import com.example.biplanes.network.GameMessage
 import com.example.biplanes.network.NetworkService
 import com.example.biplanes.network.NetworkService.ServiceMode
 import com.example.biplanes.BiplanesApplication
-import java.lang.System.currentTimeMillis
 import java.util.ArrayList
 import java.util.UUID
 import android.content.Context
-import android.content.Intent
 
 /**
- * Активность для игры Biplanes.
  * Управляет игровым процессом и пользовательским интерфейсом.
  */
 class GameActivity : AppCompatActivity(), NetworkService.NetworkListener {
@@ -47,55 +44,23 @@ class GameActivity : AppCompatActivity(), NetworkService.NetworkListener {
     // ViewBinding
     private lateinit var binding: ActivityGameBinding
     
-    // Состояние игры
-    private var isPaused = false
+    private lateinit var gameManager: GameManager
+    
     private var isMultiplayer = false
     private var isHost = false
     private var playerId = ""
     private var gameType = GameType.TRAINING
     private lateinit var playerColor: PlaneColor
     private var players = mutableListOf<Player>()
-    
-    private var lastUpdateTime = 0L // Время последней отправки данных о самолете
-    private var isGameStarted = false // Флаг, указывающий, что игра запущена
 
-    // Параметры игры
-    private var lastFireTime = 0L
-    private val fireDelay = 300L // Задержка между выстрелами в миллисекундах
-    private var lastEjectTime = 0L
-    private val ejectDelay = 1000L // Задержка между катапультированиями в миллисекундах
-    
-    // Обработчик для проверки состояния кнопок
     private val handler = Handler(Looper.getMainLooper())
-    private val controlsRunnable = object : Runnable {
-        override fun run() {
-            updateControls()
-            handler.postDelayed(this, 16) // ~60 FPS
-        }
-    }
-    
-    // Сервис сетевого взаимодействия
+
     private lateinit var networkService: NetworkService
     
-    // Флаги для кнопок
-    private var isFiringButtonPressed = false
-    private var isEjectButtonPressed = false
-    private var isFiring = false
-    private var isEjecting = false
-    
-    // Переменные для мультиплеера
     private var playerReady = false
     private var enemyReady = false
     private var connectedServerAddress: String? = null
 
-    // Константы для управления
-    private val joystickUpdateInterval = 16L // ~60 FPS
-    private var joystickUpdateRunnable: Runnable = object : Runnable {
-        override fun run() {
-            updateControls()
-            handler.postDelayed(this, joystickUpdateInterval)
-        }
-    }
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -161,8 +126,6 @@ class GameActivity : AppCompatActivity(), NetworkService.NetworkListener {
         
         // Сохраняем список игроков в SharedPreferences для возможного восстановления
         savePlayersToPreferences(players)
-        
-        // Выводим список игроков для отладки
         players.forEachIndexed { index, player ->
             Log.d(TAG, "Игрок $index: id=${player.id}, имя=${player.name}, цвет=${player.color}, хост=${player.isHost}")
         }
@@ -191,13 +154,39 @@ class GameActivity : AppCompatActivity(), NetworkService.NetworkListener {
         
         // Настраиваем обработчики кнопок
         setupButtonListeners()
+
+        gameManager = GameManager(
+            gameType = gameType,
+            isHost = isHost,
+            playerColor = playerColor,
+            playerId = playerId,
+            players = players,
+            gameView = binding.gameView,
+            fireButton = binding.fireButton,
+            ejectButton = binding.ejectButton,
+            pauseOverlay = binding.pauseOverlay,
+            gameOverOverlay = binding.gameOverOverlay,
+            joystick = binding.joystick,
+            gameActivityCallback = object : GameManager.GameActivityCallback {
+    }
+            override fun sendMessage(message: Any) {
+                networkService.sendMessage(message)
+            }
+
+            override fun runOnUi(action: () -> Unit) {
+                runOnUiThread(action)
+            }
+
+            override fun onGameStarted(isMultiplayer: Boolean) {
+                this@GameActivity.isMultiplayer = isMultiplayer
+            }
+        })
         
         // Инициализируем сетевой сервис, если это мультиплеерная игра
         if (isMultiplayer) {
             initNetworkService()
         } else {
-            // Инициализируем игру сразу для одиночной игры
-            startGame()
+            gameManager.startGame()
         }
     }
     
@@ -251,9 +240,8 @@ class GameActivity : AppCompatActivity(), NetworkService.NetworkListener {
                 networkService.switchToGameMode(gameId)
                 
                 Log.d(TAG, "Игровой режим активирован с ID: $gameId")
-                
-                // Запускаем игру автоматически
-                startGame()
+
+
             } catch (e: Exception) {
                 Log.e(TAG, "Ошибка при создании сервера: ${e.message}", e)
                 
@@ -264,8 +252,7 @@ class GameActivity : AppCompatActivity(), NetworkService.NetworkListener {
                     networkService.switchToGameMode(fallbackGameId)
                     Log.d(TAG, "Создан резервный игровой сервер с ID: $fallbackGameId")
                     
-                    // Запускаем игру даже при использовании резервного ID
-                    startGame()
+
                 } catch (e: Exception) {
                     Log.e(TAG, "Ошибка при создании резервного сервера: ${e.message}", e)
                 }
@@ -274,9 +261,7 @@ class GameActivity : AppCompatActivity(), NetworkService.NetworkListener {
             // Для клиента ничего особого делать не нужно - соединение уже установлено
             // Отправляем сообщение JoinGame для уведомления сервера
             sendJoinGameMessage()
-            
-            // Запускаем игру автоматически для клиента
-            startGame()
+
         }
         
         // Отправляем начальные данные о самолете, чтобы другие могли его видеть
@@ -337,270 +322,29 @@ class GameActivity : AppCompatActivity(), NetworkService.NetworkListener {
         // Кнопка паузы
         binding.pauseButton.setOnClickListener { togglePause() }
         
-        // Кнопка перезапуска
         binding.restartButton.setOnClickListener { restartGame() }
 
-        // Кнопка сохранения логов
         binding.saveLogsButton.setOnClickListener { saveGameLogs() }
-
-        // Метод для обработки нажатий на кнопки
-        setupButtons()
-    }
-    
-    private fun updateControls() {
-        if (isPaused) return
-        
-        // Обновляем игру в любом случае, даже если мультиплеер еще не готов
-        updateGame()
-        
-        // Отправляем сообщение о движении самолета
-        if (isMultiplayer) {
-            val playerPlane = binding.gameView.getPlayerPlane()
-            if (playerPlane != null) {
-                val message = GameMessage.PlaneMovement(
-                    playerId = playerId,
-                    position = playerPlane.position,
-                    rotation = playerPlane.rotation,
-                    velocity = playerPlane.velocity
-                )
-                try {
-                    // Отправляем каждые 50 мс
-                    val currentTime = System.currentTimeMillis()
-                    if (currentTime - lastUpdateTime > 50) {
-                        networkService.sendMessage(message)
-                        lastUpdateTime = currentTime
-                        //Log.d(TAG, "Отправлены данные о движении самолета: pos=(${playerPlane.position.x}, ${playerPlane.position.y})")
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Ошибка отправки сообщения о движении: ${e.message}")
-                }
-            }
-            
-            // Отправляем сообщение о выстреле
-            if (isFiring && System.currentTimeMillis() - lastFireTime > fireDelay) {
-                lastFireTime = System.currentTimeMillis()
-                
-                val playerPlane = binding.gameView.getPlayerPlane()
-                if (playerPlane != null) {
-                    // Создаем вектор направления выстрела
-                    val angle = Math.toRadians(playerPlane.rotation.toDouble())
-                    val bulletVelocity = Vector2D(
-                        Math.cos(angle).toFloat() * 15f,
-                        Math.sin(angle).toFloat() * 15f
-                    )
-                    
-                    // Создаем вектор позиции выстрела
-                    val bulletOffset = Vector2D(
-                        Math.cos(angle).toFloat() * playerPlane.width / 2,
-                        Math.sin(angle).toFloat() * playerPlane.width / 2
-                    )
-                    val bulletPosition = Vector2D(
-                        playerPlane.position.x + bulletOffset.x,
-                        playerPlane.position.y + bulletOffset.y
-                    )
-                    
-                    val message = GameMessage.Fire(
-                        playerId = playerId,
-                        position = bulletPosition,
-                        velocity = bulletVelocity,
-                        color = playerColor.color
-                    )
-                    try {
-                        networkService.sendMessage(message)
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Ошибка отправки сообщения о выстреле: ${e.message}")
-                    }
-                }
-            }
-            
-            // Отправляем сообщение о катапультировании
-            if (isEjecting && System.currentTimeMillis() - lastEjectTime > ejectDelay) {
-                lastEjectTime = System.currentTimeMillis()
-                
-                val playerPlane = binding.gameView.getPlayerPlane()
-                if (playerPlane != null) {
-                    val message = GameMessage.Eject(
-                        playerId = playerId,
-                        position = playerPlane.position
-                    )
-                    try {
-                        networkService.sendMessage(message)
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Ошибка отправки сообщения о катапультировании: ${e.message}")
-                    }
-                }
-            }
-        }
     }
 
-    // Метод для обработки нажатий на кнопки
-    private fun setupButtons() {
-        // Кнопка стрельбы
-        binding.fireButton.setOnTouchListener { _, event ->
-            when (event.action) {
-                MotionEvent.ACTION_DOWN -> {
-                    isFiring = true
-                    Log.d(TAG, "Fire button pressed")
-                    
-                    // Запускаем игру при первом нажатии, если она еще не запущена
-                    if (!isGameStarted) {
-                        startGame()
-                    }
-                    
-                    true
-                }
-                MotionEvent.ACTION_UP -> {
-                    isFiring = false
-                    Log.d(TAG, "Fire button released")
-                    true
-                }
-                else -> false
-            }
-        }
-        
-        // Кнопка катапультирования
-        binding.ejectButton.setOnEjectListener {
-            Log.d(TAG, "Eject button pressed")
-            
-            // Запускаем игру при первом нажатии, если она еще не запущена
-            if (!isGameStarted) {
-                startGame()
-            }
-            
-            // Устанавливаем флаг катапультирования
-            isEjecting = true
-            
-            // Немедленно вызываем метод катапультирования напрямую
-            val playerPlane = binding.gameView.getPlayerPlane()
-            if (playerPlane != null) {
-                Log.d(TAG, "Вызываем катапультирование напрямую для самолета на позиции (${playerPlane.position.x}, ${playerPlane.position.y})")
-                binding.gameView.ejectPilot(playerPlane)
-            } else {
-                Log.e(TAG, "Не удалось получить самолет игрока для катапультирования")
-            }
-            
-            // Обновляем игру для применения изменений
-            updateGame()
-            
-            // Сбрасываем флаг после небольшой задержки
-            Handler(Looper.getMainLooper()).postDelayed({
-                isEjecting = false
-                Log.d(TAG, "Eject flag reset after delay")
-            }, 500) // Увеличенная задержка для надежности
-        }
-    }
+    private fun updateControls() = gameManager.updateControls()
 
-    // Метод для обновления игры
-    private fun updateGame() {
-        try {
-            // Получаем значения джойстика
-            val joystickX = binding.joystick.getXPercent()
-            val joystickY = binding.joystick.getYPercent()
-            
-            // Добавляем логирование, когда джойстик активно используется
-            if (joystickX != 0f || joystickY != 0f) {
-                Log.d(TAG, "Джойстик активен: X=$joystickX, Y=$joystickY")
-            }
-            
-            // Обновляем состояние игры - передаем текущие значения флагов
-            binding.gameView.controlPlayerPlane(joystickX, joystickY, isFiring, isEjecting)
-            
-            // Периодически выводим отладочную информацию
-            if (System.currentTimeMillis() % 3000 < 16) { // Примерно раз в 3 секунды
-                Log.d(TAG, "Джойстик: X=$joystickX, Y=$joystickY, Стрельба=$isFiring, Катапульта=$isEjecting, isGameStarted=$isGameStarted")
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Ошибка в updateGame: ${e.message}")
-        }
-    }
+    private fun updateGame() = gameManager.updateGame()
 
     private fun togglePause() {
-        isPaused = !isPaused
-        if (isPaused) {
-            binding.gameView.pause()
-            binding.pauseOverlay.visibility = View.VISIBLE
-            handler.removeCallbacks(controlsRunnable)
-        } else {
-            binding.gameView.resume()
-            binding.pauseOverlay.visibility = View.GONE
-            handler.post(controlsRunnable)
-        }
+        gameManager.togglePause()
     }
 
-    private fun showGameOver() {
-        try {
-            Log.d(TAG, "Показываем экран окончания игры")
-            
-            // Используем runOnUiThread для обновления UI из основного потока
-            runOnUiThread {
-                // Показываем оверлей окончания игры
-                binding.gameOverOverlay.visibility = View.VISIBLE
-                
-                // Устанавливаем флаг окончания игры
-                binding.gameView.setGameOver(true)
-                
-                // Останавливаем обновление джойстика
-                stopJoystickUpdates()
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Ошибка при показе экрана окончания игры: ${e.message}")
-        }
-    }
+    private fun showGameOver() = gameManager.showGameOver()
 
-    /**
-     * Перезапускает игру
-     */
     private fun restartGame() {
-        try {
-            Log.d(TAG, "Перезапуск игры")
-            
-            // Скрываем оверлей окончания игры
-            binding.gameOverOverlay.visibility = View.GONE
-            
-            // Перезапускаем игровое представление
-            binding.gameView.restart()
-            
-            // Возобновляем обновление джойстика
-            startJoystickUpdates()
-            
-            // Сбрасываем флаги кнопок
-            isFiringButtonPressed = false
-            isEjectButtonPressed = false
-            
-            // Устанавливаем флаг, что игра запущена
-            isGameStarted = true
-            
-            // Сбрасываем флаг паузы
-            isPaused = false
-            
-            Log.d(TAG, "Игра перезапущена")
-        } catch (e: Exception) {
-            Log.e(TAG, "Ошибка при перезапуске игры: ${e.message}")
-        }
+        gameManager.restartGame()
     }
+
+    private fun stopJoystickUpdates() = gameManager.stopJoystickUpdates()
 
     private fun startJoystickUpdates() {
-        // Удаляем предыдущий обработчик, если он существует
-        handler.removeCallbacks(joystickUpdateRunnable)
-        
-        // Создаем новый обработчик
-        joystickUpdateRunnable = object : Runnable {
-            override fun run() {
-                // Всегда обновляем контролы, если игра не на паузе
-                if (!isPaused) {
-                    updateControls()
-                }
-                handler.postDelayed(this, joystickUpdateInterval)
-            }
-        }
-        
-        // Запускаем обновление джойстика
-        handler.post(joystickUpdateRunnable)
-        Log.d(TAG, "Джойстик запущен, isGameStarted=$isGameStarted")
-    }
-
-    private fun stopJoystickUpdates() {
-        handler.removeCallbacks(joystickUpdateRunnable)
+        gameManager.startJoystickUpdates()
     }
 
     // Реализация методов интерфейса NetworkListener
@@ -609,7 +353,7 @@ class GameActivity : AppCompatActivity(), NetworkService.NetworkListener {
         Log.d(TAG, "Обнаружен сервер: ${serverInfo.name}")
         
         // Подключаемся только к игровым серверам
-        if (serverInfo.name.startsWith(NetworkService.GAME_PREFIX)) {
+        if (serverInfo.name.startsWith(NetworkService.GAME_PREFIX) && !isHost) {
             // Можно добавить дополнительную логику для выбора нужного сервера
         }
     }
@@ -697,16 +441,14 @@ class GameActivity : AppCompatActivity(), NetworkService.NetworkListener {
 
     override fun onResume() {
         super.onResume()
-        if (!isPaused && isGameStarted) {
-            binding.gameView.resume()
-            handler.post(controlsRunnable)
-        }
+        gameManager.onResume()
     }
 
     override fun onPause() {
         super.onPause()
-        binding.gameView.pause()
-        handler.removeCallbacks(controlsRunnable)
+        gameManager.onPause()
+    }
+    
     }
     
     override fun onDestroy() {
@@ -736,7 +478,7 @@ class GameActivity : AppCompatActivity(), NetworkService.NetworkListener {
     private fun checkBothPlayersReady() {
         if (playerReady && enemyReady) {
             startGame()
-        }
+        } 
     }
 
     /**
@@ -826,31 +568,8 @@ class GameActivity : AppCompatActivity(), NetworkService.NetworkListener {
         }
     }
 
-    private fun startGame() {
-        isGameStarted = true
-        startJoystickUpdates()
-        
-        // Запускаем в любом случае основной цикл обновления
-        handler.post(controlsRunnable)
-        
-        Log.d(TAG, "Игра запущена: gameType=$gameType, isHost=$isHost, planeColor=$playerColor, playerId=$playerId, число игроков=${players.size}")
-        
-        // Добавляем Toast с информацией о режиме игры для отладки
-        runOnUiThread {
-            Toast.makeText(
-                this,
-                "Режим: ${if (isMultiplayer) "Мультиплеер" else "Тренировка"}, Хост: $isHost, Цвет: $playerColor",
-                Toast.LENGTH_LONG
-            ).show()
-        }
-        
-        // Если это мультиплеер, начинаем отправлять данные о положении самолета сразу
-        if (isMultiplayer) {
-            // Отправляем данные о положении самолета сразу после старта игры
-            Handler(Looper.getMainLooper()).postDelayed({
-                sendInitialPlaneInfo()
-            }, 500)
-        }
+        private fun startGame() {
+            gameManager.startGame()
     }
 
     override fun onRequestPermissionsResult(
@@ -912,7 +631,7 @@ class GameActivity : AppCompatActivity(), NetworkService.NetworkListener {
             }
         } else {
             Log.e(TAG, "Не удалось получить самолет игрока для отправки начальных данных")
-        }
+        }}
     }
 
     /**
@@ -931,12 +650,12 @@ class GameActivity : AppCompatActivity(), NetworkService.NetworkListener {
                     Toast.LENGTH_SHORT
                 ).show()
                 
-                // Убеждаемся, что игра запущена после успешного соединения
-                if (!isGameStarted) {
-                    startGame()
-                } else {
-                    // Если игра уже запущена, просто обновляем контролы
-                    updateControls()
+                if (!gameManager.isGameStarted) {
+                  startGame()
+                }
+                else{
+                    Log.d(TAG, "Игра уже запущена.")
+                    gameManager.updateControls()    
                 }
             } else {
                 // Соединение потеряно, показываем сообщение
@@ -1061,4 +780,4 @@ class GameActivity : AppCompatActivity(), NetworkService.NetworkListener {
             return ""
         }
     }
-} 
+}

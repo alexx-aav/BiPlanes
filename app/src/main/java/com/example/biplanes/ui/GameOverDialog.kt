@@ -1,6 +1,7 @@
 package com.example.biplanes.ui
 
 import android.content.Context
+import android.util.Log
 import android.view.View
 import android.widget.TextView
 import com.example.biplanes.R
@@ -12,24 +13,31 @@ class GameOverDialog(context: Context) : BaseDialog(context) {
     override fun getLayoutResId() = R.layout.dialog_game_over
 
     override fun initViews() {
-        dialogView.findViewById<View>(R.id.rematchButton)
-        dialogView.findViewById<View>(R.id.mainMenuButton)
+        // No need to do anything here, merged with setupListeners
     }
 
     override fun setupListeners() {
-        dialogView.findViewById<View>(R.id.rematchButton).setOnClickListener {
+        val rematchButton = dialogView.findViewById<View>(R.id.rematchButton)
+        rematchButton?.setOnClickListener {
             onRematchListener?.invoke()
             dismiss()
+        } ?: run {
+            Log.e("GameOverDialog", "Rematch button not found")
         }
 
-        dialogView.findViewById<View>(R.id.mainMenuButton).setOnClickListener {
+        val mainMenuButton = dialogView.findViewById<View>(R.id.mainMenuButton)
+        mainMenuButton?.setOnClickListener {
             onMainMenuListener?.invoke()
             dismiss()
+        } ?: run {
+            Log.e("GameOverDialog", "Main menu button not found")
         }
     }
 
     fun setWinner(winner: String) {
-        dialogView.findViewById<TextView>(R.id.winnerText).text = "Победитель: $winner"
+        dialogView.findViewById<TextView>(R.id.winnerText)?.text = "Победитель: $winner" ?: run {
+            Log.e("GameOverDialog", "WinnerText not found")
+        }
     }
 
     fun setScore(score: String) {

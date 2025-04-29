@@ -1,40 +1,49 @@
 package com.example.biplanes.ui
 
 import android.view.View
+import android.view.animation.AccelerateInterpolator
+import android.view.animation.Interpolator
 import android.view.animation.DecelerateInterpolator
 
 object DialogAnimator {
-    fun showDialog(view: View) {
-        view.alpha = 0f
-        view.scaleX = 0f
-        view.scaleY = 0f
+    fun animateDialog(
+        view: View,
+        duration: Long = 300,
+        interpolator: Interpolator = DecelerateInterpolator(),
+        startAlpha: Float = 0f,
+        endAlpha: Float = 1f,
+        startY: Float = 0f,
+        endY: Float = 0f,
+        startScale: Float = 0f,
+        endScale: Float = 1f,
+    ) {
+        view.alpha = startAlpha
+        view.translationY = startY
+        view.scaleX = startScale
+        view.scaleY = startScale
         view.visibility = View.VISIBLE
-        
+
         view.animate()
-            .alpha(1f)
-            .scaleX(1f)
-            .scaleY(1f)
-            .setDuration(300)
+            .alpha(endAlpha)
+            .translationY(endY)
+            .scaleX(endScale)
+            .scaleY(endScale)
+            .setDuration(duration)
+            .setInterpolator(interpolator)
             .start()
     }
 
-    fun hideDialog(view: View) {
+    fun hideDialog(view: View, onEnd: () -> Unit = {}) {
         view.animate()
             .alpha(0f)
             .scaleX(0f)
             .scaleY(0f)
-            .setDuration(300)
-            .start()
-    }
-
-    fun animateDialogItems(dialogView: View) {
-        dialogView.alpha = 0f
-        dialogView.translationY = 50f
-        dialogView.animate()
-            .alpha(1f)
-            .translationY(0f)
             .setDuration(200)
-            .setInterpolator(DecelerateInterpolator())
+            .setInterpolator(AccelerateInterpolator())
+            .withEndAction {
+                view.visibility = View.GONE
+                onEnd()
+            }
             .start()
     }
-} 
+}

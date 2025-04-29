@@ -1,19 +1,20 @@
 package com.example.biplanes.game.models.objects
 
 import android.graphics.Canvas
+import android.graphics.RectF
 import android.graphics.Color
 import android.graphics.Paint
-import android.graphics.PointF
+import com.example.biplanes.game.models.Collidable
 import com.example.biplanes.game.models.Vector2D
 import kotlin.random.Random
 import android.util.Log
 
 class Target(
-    var position: Vector2D,
-    val width: Float,
-    val height: Float,
+    override var position: Vector2D,
+    override var width: Float,
+    override var height: Float,
     val type: Type
-) {
+) : Collidable {
     enum class Type {
         STATIC,
         MOVING
@@ -171,31 +172,9 @@ class Target(
             return destroyedTargets
         }
         
-        /**
-         * Проверяет столкновение пули с мишенью
-         */
-        fun checkCollision(bullet: Bullet, target: Target): Boolean {
-            // Если мишень уже уничтожена, столкновения нет
-            if (target.isDestroyed) {
-                return false
-            }
-            
-            // Вычисляем расстояние между центрами объектов
-            val dx = target.position.x - bullet.position.x
-            val dy = target.position.y - bullet.position.y
-            val distance = Math.sqrt((dx * dx + dy * dy).toDouble()).toFloat()
-            
-            // Увеличиваем зону столкновения для легкого попадания
-            // Используем 120% от радиуса мишени для более легкого попадания
-            val collisionDistance = target.width / 2 * 1.2f + bullet.radius
-            
-            // Подробное логирование для отладки
-            if (distance < target.width) {
-                Log.d("Target", "Близкое взаимодействие пули и мишени: расстояние=$distance, порог=$collisionDistance")
-            }
-            
-            // Проверяем столкновение
-            return distance <= collisionDistance
-        }
+       
+    }
+
+    override fun checkCollision(other: Collidable): Boolean = other.checkCollision(position.x, position.y)
     }
 } 

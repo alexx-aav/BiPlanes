@@ -1,6 +1,7 @@
 package com.example.biplanes.ui
 
 import android.content.Context
+import android.util.Log
 import android.view.View
 import com.example.biplanes.R
 
@@ -11,26 +12,31 @@ class PauseDialog(context: Context) : BaseDialog(context) {
 
     override fun getLayoutResId() = R.layout.dialog_pause
 
-    override fun initViews() {
-        dialogView.findViewById<View>(R.id.resumeButton)
-        dialogView.findViewById<View>(R.id.restartButton)
-        dialogView.findViewById<View>(R.id.exitButton)
-    }
+    override fun initViews() {}
 
     override fun setupListeners() {
-        dialogView.findViewById<View>(R.id.resumeButton).setOnClickListener {
+        val resumeButton = dialogView.findViewById<View>(R.id.resumeButton)
+        resumeButton?.setOnClickListener {
             onResumeListener?.invoke()
             dismiss()
+        } ?: run {
+            Log.e("PauseDialog", "Resume button not found")
         }
 
-        dialogView.findViewById<View>(R.id.restartButton).setOnClickListener {
+        val restartButton = dialogView.findViewById<View>(R.id.restartButton)
+        restartButton?.setOnClickListener {
             onRestartListener?.invoke()
             dismiss()
+        } ?: run {
+            Log.e("PauseDialog", "Restart button not found")
         }
 
-        dialogView.findViewById<View>(R.id.exitButton).setOnClickListener {
+        val exitButton = dialogView.findViewById<View>(R.id.exitButton)
+        exitButton?.setOnClickListener {
             onExitListener?.invoke()
             dismiss()
+        } ?: run {
+            Log.e("PauseDialog", "Exit button not found")
         }
     }
 
